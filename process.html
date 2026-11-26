@@ -491,7 +491,11 @@ const Bus=(()=>{
 
 /* ===================== 소리 · 진동 ===================== */
 let actx=null;
-function unlockAudio(){try{if(!actx){const AC=window.AudioContext||window.webkitAudioContext;if(AC)actx=new AC()}if(actx&&actx.state==='suspended')actx.resume()}catch(e){}}
+function unlockAudio(){try{
+  try{if(navigator.audioSession)navigator.audioSession.type='playback'}catch(e){} // iPhone 무음 스위치 무시
+  if(!actx){const AC=window.AudioContext||window.webkitAudioContext;if(AC)actx=new AC()}
+  if(actx&&actx.state!=='running')actx.resume()}catch(e){}}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&actx&&actx.state!=='running')try{actx.resume()}catch(e){}});
 document.addEventListener('pointerdown',unlockAudio,{passive:true});
 document.addEventListener('keydown',unlockAudio);
 const SOUND={
@@ -500,7 +504,9 @@ const SOUND={
   chime:{type:'sine',vol:.14,seq:[[660,.12,.05],[880,.16,0]]}
 };
 function play(name){
-  if(!actx||actx.state!=='running')return;const P=SOUND[name];let t=actx.currentTime+.02;
+  if(!actx)return;
+  if(actx.state!=='running'){try{actx.resume().then(()=>{if(actx.state==='running')play(name)}).catch(()=>{})}catch(e){}return}
+  const P=SOUND[name];let t=actx.currentTime+.02;
   P.seq.forEach(([f,d,gap])=>{const o=actx.createOscillator(),g=actx.createGain();o.type=P.type;o.frequency.value=f;
     g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(P.vol,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+d);
     o.connect(g);g.connect(actx.destination);o.start(t);o.stop(t+d+.03);t+=d+gap});

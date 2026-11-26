@@ -514,17 +514,29 @@ const ITEM_ST={ok:'정상',pre:'주의',warn:'주의',bad:'위험'};
    - 품질 이탈(위험): "띠-로-띠-로" 하강 2음 두 번 (988→659Hz, 귀에 거슬리게)
    - 품질 주의·예고: 부드러운 "띵" 2음 (660→880Hz, 작게) */
 let actx=null,muted=false,audioOn=false;
-function unlockAudio(){try{if(!actx){const AC=window.AudioContext||window.webkitAudioContext;if(AC)actx=new AC()}if(actx&&actx.state==='suspended')actx.resume();audioOn=!!actx}catch(e){}}
-document.addEventListener('pointerdown',()=>{const was=audioOn;unlockAudio();if(!was&&audioOn)renderSnd()},{passive:true});
+function unlockAudio(){try{
+  // iPhone: 무음(벨소리) 스위치가 켜져 있어도 소리가 나도록 '재생' 모드로 (Safari 16.4+)
+  try{if(navigator.audioSession)navigator.audioSession.type='playback'}catch(e){}
+  if(!actx){const AC=window.AudioContext||window.webkitAudioContext;if(AC)actx=new AC()}
+  if(actx&&actx.state!=='running')actx.resume();
+  // 무음 버퍼를 한 번 재생해 오디오 출력을 확실히 깨움 (iOS)
+  if(actx){const b=actx.createBuffer(1,1,22050),s=actx.createBufferSource();s.buffer=b;s.connect(actx.destination);s.start(0)}
+  audioOn=!!actx}catch(e){}}
+// 화면 아무 곳을 눌러도 소리 준비 (단, 알림 버튼 자체는 아래 onclick에서 처리 → 켜자마자 무음으로 바뀌던 문제 방지)
+document.addEventListener('pointerdown',e=>{if(e.target.closest&&e.target.closest('#sndBtn'))return;const was=audioOn;unlockAudio();if(!was&&audioOn)renderSnd()},{passive:true});
+// 화면이 꺼졌다 켜지면 오디오가 멈춰 있을 수 있어 다시 깨움
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&actx&&actx.state!=='running')try{actx.resume()}catch(e){}});
 const SND={
-  orderUrgent:{type:'square',vol:.16,seq:[[1320,.16,.07],[1320,.16,.07],[1320,.16,.35],[1320,.16,.07],[1320,.16,.07],[1320,.16,0]]},
-  order:{type:'sine',vol:.32,seq:[[880,.16,.08],[1175,.26,0]]},
+  orderUrgent:{type:'square',vol:.3,seq:[[1320,.16,.07],[1320,.16,.07],[1320,.16,.35],[1320,.16,.07],[1320,.16,.07],[1320,.16,0]]},
+  order:{type:'triangle',vol:.6,seq:[[880,.18,.08],[1175,.28,.25],[880,.18,.08],[1175,.28,0]]},
   bad:{type:'triangle',vol:.3,seq:[[988,.14,.05],[659,.22,.12],[988,.14,.05],[659,.22,0]]},
   warn:{type:'sine',vol:.16,seq:[[660,.12,.05],[880,.16,0]]},
   test:{type:'sine',vol:.25,seq:[[660,.1,.04],[880,.1,.04],[1175,.2,0]]}
 };
 function playSnd(name){
-  if(muted||!actx||actx.state!=='running')return;const P=SND[name];let t=actx.currentTime+.02;
+  if(muted||!actx)return;
+  if(actx.state!=='running'){try{actx.resume().then(()=>{if(actx.state==='running')playSnd(name)}).catch(()=>{})}catch(e){}return}
+  const P=SND[name];let t=actx.currentTime+.02;
   P.seq.forEach(([f,d,gap])=>{const o=actx.createOscillator(),g=actx.createGain();o.type=P.type;o.frequency.value=f;
     g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(P.vol,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+d);
     o.connect(g);g.connect(actx.destination);o.start(t);o.stop(t+d+.03);t+=d+gap});
