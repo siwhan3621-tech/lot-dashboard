@@ -260,6 +260,7 @@ h1,h2,h3,h4{margin:0;text-wrap:balance}
 .w-zsel button{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:11px;font-weight:600}
 .w-zsel button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
 </style>
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
 </head>
 <body>
 
@@ -438,23 +439,31 @@ const stCol=st=>st==='bad'?'var(--bad)':st==='pre'?'var(--accent)':'var(--fg)';
 /* ===================== 메시지 버스 =====================
    서버(serve.ps1)로 열면 /api 중계로 PC ↔ 휴대폰 연결,
    파일로 열면 같은 화면(과 같은 브라우저 탭) 안에서만 연결 */
-/* 서버가 없으면(GitHub Pages 등) 인터넷 중계(ntfy.sh)로 연결 → 같은 Wi-Fi가 아니어도 휴대폰 알림 앱과 주고받음 */
+/* 항상 인터넷 중계(공개 MQTT 2곳)로 연결 → 같은 Wi-Fi가 아니어도, serve.ps1로 열어도 휴대폰 알림 앱과 주고받음 */
 const PUBLIC_LIVE='https://siwhan3621-tech.github.io/lot-dashboard/live.html';
-const RELAY='https://ntfy.sh/',TOPIC=new URLSearchParams(location.search).get('ch')||'lotwatch-hk08-q7m3x9';
+const TOPIC=new URLSearchParams(location.search).get('ch')||'lotwatch-hk08-q7m3x9';
+const MQ_BROKERS=['wss://broker.emqx.io:8084/mqtt','wss://broker.hivemq.com:8884/mqtt'],MQ_T='lotwatch/hk08/'+TOPIC;
 const Bus=(()=>{
   const subs=[],readyCbs=[];let mode='local',since=0,info=null,ok=true,isReady=false,bc=null,lastState=0;
   const SELF=Math.random().toString(36).slice(2,10),seen=new Set();
   try{bc=new BroadcastChannel('lotqc-process-v1')}catch(e){}
   const deliver=m=>subs.slice().forEach(f=>{try{f(m)}catch(e){console.error(e)}});
-  const deliverExt=m=>{if(!m||m._from===SELF)return;if(m._mid){if(seen.has(m._mid))return;seen.add(m._mid)}deliver(m)};
+  const deliverExt=m=>{if(!m||m._from===SELF)return;if(m._mid){if(seen.has(m._mid))return;seen.add(m._mid)}
+    if(m.type==='snap'){if(ROLE!=='ccr')(m.list||[]).forEach(o=>deliver({type:'order',order:o}));return}
+    deliver(m)};
   if(bc)bc.onmessage=e=>deliverExt(e.data);
-  const relay=m=>fetch(RELAY+TOPIC,{method:'POST',body:JSON.stringify(m)}).then(r=>{ok=r.ok}).catch(()=>{ok=false});
+  // 공개 MQTT 중계 2곳에 동시 접속 (전송 횟수 제한 없음, 한 곳이 끊겨도 동작, 중복은 _mid로 걸러냄)
+  let MQ=[];
+  const relay=(m,retain)=>{const s=JSON.stringify(m);MQ.forEach(c=>{try{c.publish(MQ_T+(retain?'/snap':'/m'),s,{qos:retain?1:0,retain:!!retain})}catch(e){}})};
   function startCloud(){
-    if(!('EventSource' in window))return;
-    try{const es=new EventSource(RELAY+TOPIC+'/sse'+(ROLE==='worker'?'?since=10m':''));mode='cloud';
-      es.onopen=()=>{ok=true};es.onerror=()=>{ok=false};
-      es.onmessage=e=>{try{const d=JSON.parse(e.data);if(d.event&&d.event!=='message')return;ok=true;deliverExt(JSON.parse(d.message))}catch(x){}};
-    }catch(e){}
+    if(!window.mqtt)return;mode='cloud';ok=false;
+    const upd=()=>{ok=MQ.some(c=>c.connected)};
+    MQ=MQ_BROKERS.map(u=>{try{
+      const c=mqtt.connect(u,{clientId:'lwc_'+SELF+Math.random().toString(16).slice(2,6),connectTimeout:8000,reconnectPeriod:2000,keepalive:30,clean:true});
+      c.on('connect',()=>{c.subscribe([MQ_T+'/m',MQ_T+'/snap'],{qos:0});upd()});
+      c.on('close',upd);c.on('offline',upd);c.on('error',()=>{});
+      c.on('message',(t,p)=>{try{deliverExt(JSON.parse(p.toString()))}catch(e){}});
+      return c}catch(e){return null}}).filter(Boolean);
   }
   const setReady=()=>{if(isReady)return;isReady=true;readyCbs.splice(0).forEach(f=>f())};
   async function pollOnce(){
@@ -463,12 +472,8 @@ const Bus=(()=>{
   }
   function loop(){setTimeout(async()=>{await pollOnce();loop()},1000)}
   function stateLoop(){setTimeout(async()=>{try{const r=await fetch('api/state',{cache:'no-store'});const s=await r.json();if(s&&s.vars)deliver({type:'state',s})}catch(e){}stateLoop()},2000)}
-  async function start(){
-    if(/^https?:$/.test(location.protocol)){
-      try{const r=await fetch('api/info',{cache:'no-store'});if(r.ok){info=await r.json();mode='server';since=ROLE==='ccr'?(info.lastId||0):0}}catch(e){}
-    }
-    if(mode==='server'){await pollOnce();setReady();loop();if(ROLE==='worker')stateLoop()}else{startCloud();setReady()}
-  }
+  // serve.ps1로 열어도 항상 인터넷 중계를 씀 → GitHub 주소로 접속한 휴대폰과 반드시 연결됨
+  async function start(){startCloud();setReady()}
   const mid=()=>SELF+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,6);
   function send(type,p){const m=Object.assign({type,_from:SELF,_mid:mid()},p);
     if(mode==='server')fetch('api/msg',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(m)}).catch(()=>{ok=false});
@@ -477,8 +482,10 @@ const Bus=(()=>{
     if(mode==='server')fetch('api/state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(s)}).catch(()=>{});
     else{const m={type:'state',s,_from:SELF,_mid:mid()};if(bc)try{bc.postMessage(m)}catch(e){}
       // 인터넷 중계는 전송 횟수 제한이 있어 공정 값은 10초에 한 번만 보냄
-      if(mode==='cloud'&&Date.now()-lastState>10000){lastState=Date.now();relay(m)}}}
-  return {on:f=>subs.push(f),send,putState,start,ready:f=>isReady?f():readyCbs.push(f),
+      if(mode==='cloud'&&Date.now()-lastState>3000){lastState=Date.now();relay(m)}}}
+  // 열린 작업 지시 목록을 보관 메시지로 올림 → 나중에 접속한 휴대폰도 즉시 받음
+  function snap(list,sid){if(mode==='cloud')relay({type:'snap',sid,list,_from:SELF,_mid:mid()},true)}
+  return {on:f=>subs.push(f),send,putState,start,snap,ready:f=>isReady?f():readyCbs.push(f),
     get mode(){return mode},get ok(){return ok},get info(){return info}};
 })();
 
@@ -606,7 +613,15 @@ function tick(){
   VARS.forEach(V=>{const s=S.vars[V.tag];s.h.push(+(V.sp+gauss()*V.noise+(off[V.tag]||0)).toFixed(V.dec+1));if(s.h.length>HIST)s.h.shift();evaluate(V,s)});
   S.orders.forEach(o=>{if(o.status==='sent'&&!o.od&&Date.now()-o.sentAt>OVERDUE){o.od=true;logE('sys',`${o.zone} 담당 30초 미응답 — 단말은 계속 재알림 중, 필요하면 무전으로 확인하세요`)}});
   Bus.putState({sid:S.sid,t:Date.now(),vars:VARS.map(V=>({tag:V.tag,v:last(S.vars[V.tag].h),st:S.vars[V.tag].st}))});
+  pubSnap();
   renderCCR();
+}
+// 열린 지시 목록이 바뀔 때(또는 20초마다) 보관 메시지로 다시 올림
+let lastSnap='',lastSnapAt=0;
+function pubSnap(){
+  const list=S.orders.filter(o=>o.status==='sent'||o.status==='ack'||o.status==='help').slice(0,20);
+  const j=S.sid+JSON.stringify(list);
+  if(j!==lastSnap||Date.now()-lastSnapAt>20000){lastSnap=j;lastSnapAt=Date.now();Bus.snap(list,S.sid)}
 }
 function schedule(){clearTimeout(S.timer);if(S.running)S.timer=setTimeout(()=>{tick();schedule()},INTERVAL/S.speed)}
 function initCCR(){

@@ -227,6 +227,7 @@ button{cursor:pointer}
   .sim .close{display:inline-block}
 }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
 </head>
 <body>
 <div class="stage">
@@ -534,10 +535,13 @@ function renderSnd(){const b=$('sndBtn');if(!b)return;
   b.textContent=!audioOn?'🔔 알림 켜기':muted?'🔕 무음':'🔔 소리 켬'}
 
 /* ---------- CCR 작업 지시 수신 (현장 작업자 단말 기능을 이 앱에 합침) ----------
-   연결 순서: ① serve.ps1 서버가 있으면 서버 중계 ② 없으면 인터넷 중계(ntfy.sh)로 어느 네트워크에서든 연결
-   ③ 같은 브라우저의 다른 탭과는 BroadcastChannel로 바로 연결
+   연결: 공개 MQTT 중계 서버 2곳(WebSocket)에 동시에 접속 → 어느 네트워크에서든, 전송 횟수 제한 없이 연결
+   (한 곳이 끊겨도 다른 곳으로 받음, 같은 메시지는 한 번만 처리). 같은 브라우저의 다른 탭과는 BroadcastChannel.
+   CCR은 열린 지시 목록을 '보관 메시지'로도 올려 두므로 나중에 접속한 휴대폰도 바로 받음.
    CCR이 보낸 지시는 품질 알림보다 항상 먼저 보여 주고, 확인할 때까지 소리·진동으로 다시 알림 */
-const RELAY='https://ntfy.sh/',TOPIC=new URLSearchParams(location.search).get('ch')||'lotwatch-hk08-q7m3x9';
+const TOPIC=new URLSearchParams(location.search).get('ch')||'lotwatch-hk08-q7m3x9';
+const MQ_BROKERS=['wss://broker.emqx.io:8084/mqtt','wss://broker.hivemq.com:8884/mqtt'],MQ_T='lotwatch/hk08/'+TOPIC;
+let MQ=[];
 const SELF=Math.random().toString(36).slice(2,10),DEVICE='app-'+SELF.slice(0,6);
 const ORDERS=new Map(),seenMsg=new Set();
 let busMode='local',busOk=true,quietUntil=0,ovKey=null,ovKind=null,lastOrderAlert={},orderRes='조치 완료';
@@ -548,21 +552,19 @@ let bcx=null;try{bcx=new BroadcastChannel('lotqc-process-v1');bcx.onmessage=e=>b
 async function busStart(){
   quietUntil=Date.now()+3000; // 접속 직후 지난 지시를 한꺼번에 받을 때는 소리를 한 번만 냄
   setTimeout(()=>{const p=activeOrders().find(o=>o.status==='sent');if(p)notifyOrder(p,'repeat')},3300);
-  if(/^https?:$/.test(location.protocol)){
-    try{const r=await fetch('api/info',{cache:'no-store'});if(r.ok){busMode='server';let since=0;
-      const poll=async()=>{try{const r=await fetch('api/msg?since='+since,{cache:'no-store'});const a=await r.json();a.forEach(x=>{since=Math.max(since,x.id);busDeliver(Object.assign({},x.m))});busOk=true}catch(e){busOk=false}setTimeout(poll,1000)};
-      poll();hb();return}}catch(e){}
+  if(window.mqtt){busMode='cloud';busOk=false;
+    const upd=()=>{const ok=MQ.some(c=>c.connected);if(ok!==busOk){busOk=ok;renderHome()}};
+    MQ=MQ_BROKERS.map(u=>{try{
+      const c=mqtt.connect(u,{clientId:'lwa_'+SELF+Math.random().toString(16).slice(2,6),connectTimeout:8000,reconnectPeriod:2000,keepalive:30,clean:true});
+      c.on('connect',()=>{c.subscribe([MQ_T+'/m',MQ_T+'/snap'],{qos:0});upd();hb()});
+      c.on('close',upd);c.on('offline',upd);c.on('error',()=>{});
+      c.on('message',(t,p)=>{try{busDeliver(JSON.parse(p.toString()))}catch(e){}});
+      return c}catch(e){return null}}).filter(Boolean);
   }
-  if('EventSource' in window){try{
-    const es=new EventSource(RELAY+TOPIC+'/sse?since=10m');busMode='cloud';
-    es.onopen=()=>{busOk=true;renderHome()};es.onerror=()=>{busOk=false};
-    es.onmessage=e=>{try{const d=JSON.parse(e.data);if(d.event&&d.event!=='message')return;busDeliver(JSON.parse(d.message))}catch(x){}};
-  }catch(e){}}
   hb();
 }
 function busSend(type,p){const m=Object.assign({type,_from:SELF,_mid:SELF+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,6)},p);
-  if(busMode==='server')fetch('api/msg',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(m)}).catch(()=>{});
-  else if(busMode==='cloud')fetch(RELAY+TOPIC,{method:'POST',body:JSON.stringify(m)}).catch(()=>{});
+  const s=JSON.stringify(m);MQ.forEach(c=>{try{if(c.connected)c.publish(MQ_T+'/m',s,{qos:0})}catch(e){}});
   if(bcx)try{bcx.postMessage(m)}catch(e){}
 }
 function hb(){busSend('hb',{device:DEVICE,zone:'전체',name:myName+' · 알림 앱'})}
@@ -570,6 +572,8 @@ function activeOrders(){return [...ORDERS.values()].filter(isOpen)
   .sort((a,b)=>(a.status==='sent'?0:1)-(b.status==='sent'?0:1)||(a.pri==='긴급'?0:1)-(b.pri==='긴급'?0:1)||b.sentAt-a.sentAt)}
 function onBus(m){
   if(m.type==='reset'){ORDERS.clear();lastOrderAlert={};hideOv();render();return}
+  // CCR이 보관해 둔 '열린 지시 목록' → 나중에 접속해도 받음
+  if(m.type==='snap'){(m.list||[]).forEach(o=>onBus({type:'order',order:o}));return}
   if(m.type!=='order'||!m.order)return;
   const o=Object.assign({},m.order),k=okey(o),prev=ORDERS.get(k);
   if(prev&&prev._acked&&o.status==='sent')o.status='ack';
@@ -628,7 +632,7 @@ const orderCard=(o,big)=>{const urgent=o.pri==='긴급',stTxt={sent:'새 지시 
   return `<div class="order${urgent?' urgent':''}"><div class="ok"><span>📢 CCR 작업 지시 · ${esc(o.pri)}</span><span class="pill ${o.status==='sent'?'st-new':'st-ack'}">${stTxt}</span><span class="tm">${hm(o.sentAt)}</span></div>`+
     `<div class="ot">${esc(o.title)}</div>${big?`<div class="oa">${esc(o.act)}</div><div class="oi">${esc(o.zone)} 담당 · ${esc(o.tag)} · 지시 ${esc(o.by||'CCR')}</div>`:''}`+
     `<div class="btns">${o.status==='sent'?`<button class="btn ${urgent?'urgent':'primary'}" type="button" data-oack="${esc(okey(o))}">확인 · 출동</button>`:o.status==='ack'?`<button class="btn primary" type="button" data-ord="${esc(okey(o))}">완료 보고</button>`:''}<button class="btn" type="button" data-ord="${esc(okey(o))}">자세히</button></div></div>`};
-const connTxt=()=>busMode==='cloud'?(busOk?'CCR 작업 지시 수신 중 (인터넷 연결)':'CCR 연결 확인 중…'):busMode==='server'?(busOk?'CCR 작업 지시 수신 중 (서버 연결)':'서버 연결 끊김'):'CCR 작업 지시: 이 브라우저 안에서만 연결';
+const connTxt=()=>busMode==='cloud'?(busOk?'CCR 작업 지시 수신 중 (인터넷 연결)':'CCR 중계 서버에 연결하는 중…'):'인터넷 연결을 확인하세요 (CCR 작업 지시를 받을 수 없음)';
 
 /* ---------- 화면 ---------- */
 const stPill=a=>a.status==='new'?'<span class="pill st-new">미확인</span>':a.status==='ack'?'<span class="pill st-ack">확인함</span>':'<span class="pill st-done">조치완료</span>';
