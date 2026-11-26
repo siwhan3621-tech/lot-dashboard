@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#4b46c8">
+<title>LOT 품질 대시보드 시작</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* 서버 주소(IP)만 치면 열리는 시작 화면. 휴대폰에서 엄지로 누르기 쉬운 큰 버튼 위주 */
+:root{--bg:#eef0f5;--surface:#fff;--line:#d8dbe5;--fg:#171a24;--muted:#5d6273;--accent:#4b46c8;--accent-soft:#e7e6fb;
+  --f-body:"IBM Plex Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;--f-mono:"IBM Plex Mono",ui-monospace,monospace}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#0d0f15;--surface:#1a1d27;--line:#323748;--fg:#e8eaf2;--muted:#9aa0b4;--accent:#9d99ff;--accent-soft:#2a2a4d;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0d0f15;--surface:#1a1d27;--line:#323748;--fg:#e8eaf2;--muted:#9aa0b4;--accent:#9d99ff;--accent-soft:#2a2a4d;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--f-body);
+  padding:calc(24px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+.wrap{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+.eyebrow{font-size:.72rem;letter-spacing:.08em;color:var(--muted);font-weight:600}
+h1{margin:2px 0 0;font-size:1.5rem;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:.9rem;margin:0 0 6px}
+.sec{font-size:.8rem;font-weight:600;color:var(--muted);margin:10px 2px 0}
+a.go{display:flex;align-items:center;gap:14px;text-decoration:none;color:inherit;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px 18px;min-height:76px}
+a.go.main{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+a.go .ic{width:44px;height:44px;border-radius:12px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;flex-shrink:0}
+a.go.main .ic{background:rgba(255,255,255,.18);color:var(--surface)}
+a.go svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+a.go b{display:block;font-size:1.08rem}
+a.go span.d{display:block;font-size:.82rem;opacity:.8}
+a.go .ar{margin-left:auto;font-size:1.3rem;opacity:.6}
+.addr{background:var(--surface);border:1px dashed var(--line);border-radius:14px;padding:12px 16px;font-size:.86rem;color:var(--muted)}
+.addr code{font-family:var(--f-mono);font-weight:600;color:var(--fg);font-size:.95rem}
+.addr div{display:flex;justify-content:space-between;gap:10px;padding:3px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div>
+    <div class="eyebrow">AID 해커톤 · ㈜포스포 연계 과제</div>
+    <h1>배치(lot)별 품질검사 결과 추세 대시보드</h1>
+  </div>
+  <p class="sub">과제 핵심 화면은 <b>품질 관리도</b>입니다. 이상 신호를 현장 조치까지 잇는 화면은 아래 '확장'에 있습니다.</p>
+
+  <div class="sec">과제 핵심 · lot별 검사 결과 추세와 이탈 예고</div>
+  <a class="go main" href="index.html"><span class="ic"><svg viewBox="0 0 24 24"><path d="M4 19V9M10 19V5M16 19v-7M22 19H2"/></svg></span><span><b>LOT 품질 관리도 대시보드</b><span class="d">색좌표·순도·입도·수분·휘도 추세, 이탈 예고, LOT 상세</span></span><span class="ar">›</span></a>
+
+  <div class="sec">확장 · 이상 신호를 현장 조치까지 (휴대폰 · 현장용)</div>
+  <a class="go" href="live.html"><span class="ic"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg></span><span><b>LOT 품질 알림 앱</b><span class="d">검사 결과·이탈 예고 알림 보기</span></span><span class="ar">›</span></a>
+  <a class="go" href="process.html?role=worker"><span class="ic"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg></span><span><b>현장 작업자 단말</b><span class="d">CCR 작업 지시를 진동·소리로 받기</span></span><span class="ar">›</span></a>
+
+  <div class="sec">확장 · PC · 발표용</div>
+  <a class="go" href="process.html"><span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></span><span><b>CCR 콘솔</b><span class="d">공정 변수 감시·지시 승인 (PC에서 열어 두기)</span></span><span class="ar">›</span></a>
+  <a class="go" href="qr.html"><span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 17h4v4h-4"/></svg></span><span><b>접속 QR 띄우기</b><span class="d">청중·팀원 휴대폰 접속용</span></span><span class="ar">›</span></a>
+
+  <div class="addr" id="addr"></div>
+</div>
+<script>
+(function(){
+  const box=document.getElementById('addr');
+  // PC 서버(serve.ps1)로 열었을 때: 같은 Wi-Fi용 짧은 주소 안내
+  function show(host){
+    box.innerHTML=
+      `<div><span>이 화면</span><code>${host}</code></div>`+
+      `<div><span>현장 작업자 단말</span><code>${host}/w</code></div>`+
+      `<div><span>품질 알림 앱</span><code>${host}/q</code></div>`;
+  }
+  // 온라인(GitHub Pages 등) 버전: 서버가 없어 PC↔휴대폰 실시간 연동은 안 됨
+  function online(){
+    box.innerHTML='<b style="color:var(--fg)">온라인 버전 안내</b><br>어느 네트워크에서든 모든 화면을 볼 수 있습니다. 단, CCR 콘솔과 휴대폰 단말이 <b>서로 실시간으로 주고받는 기능</b>은 발표 PC에서 serve.ps1 서버로 열었을 때만 됩니다. 온라인에서는 CCR 콘솔 화면 안의 단말 미리보기로 흐름을 볼 수 있습니다.';
+  }
+  const local=/^(localhost|127\.|\[::1\])/.test(location.hostname);
+  fetch('api/info',{cache:'no-store'}).then(r=>{if(!r.ok)throw 0;return r.json()}).then(i=>{
+    const ip=(i.ips||[])[0];show(local&&ip?ip+(i.port==80?'':':'+i.port):location.host);
+  }).catch(online);
+})();
+</script>
+</body>
+</html>

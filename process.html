@@ -1,0 +1,956 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#4b46c8">
+<title>공정 변수 CCR</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* 공정 변수 모니터링 · CCR 승인 · 현장 단말 지시 데모
+   - process.html            : CCR 콘솔 (PC) + 오른쪽에 작업자 단말 미리보기
+   - process.html?role=worker: 현장 작업자 단말 (휴대폰·전용 단말)
+   역할: 시스템은 감지·권고·전달·기록만, 판단·승인·운전 조작은 CCR(DCS). */
+:root{
+  --bg:#eef0f5; --surface:#ffffff; --surface-2:#f2f3f7; --line:#d8dbe5;
+  --fg:#171a24; --muted:#5d6273; --accent:#4b46c8; --accent-soft:#e7e6fb;
+  --ok:#1f8a5b; --ok-soft:#e2f3ea; --warn:#b26a00; --warn-soft:#fbefd9; --bad:#c8333b; --bad-soft:#fbe4e5;
+  --shadow:0 18px 44px rgba(20,22,40,.16);
+  --f-body:"IBM Plex Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0d0f15; --surface:#1a1d27; --surface-2:#232735; --line:#323748;
+  --fg:#e8eaf2; --muted:#9aa0b4; --accent:#9d99ff; --accent-soft:#2a2a4d;
+  --ok:#4cc58c; --ok-soft:#173326; --warn:#f0a73a; --warn-soft:#3a2c12; --bad:#ff6b72; --bad-soft:#3d1c20;
+  --shadow:0 18px 44px rgba(0,0,0,.5); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0d0f15; --surface:#1a1d27; --surface-2:#232735; --line:#323748;
+  --fg:#e8eaf2; --muted:#9aa0b4; --accent:#9d99ff; --accent-soft:#2a2a4d;
+  --ok:#4cc58c; --ok-soft:#173326; --warn:#f0a73a; --warn-soft:#3a2c12; --bad:#ff6b72; --bad-soft:#3d1c20;
+  --shadow:0 18px 44px rgba(0,0,0,.5); color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:14px;line-height:1.5}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+button:disabled{cursor:default}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+h1,h2,h3,h4{margin:0;text-wrap:balance}
+.mono,.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.note{font-size:.78rem;color:var(--muted)}
+.eyebrow{font-size:.7rem;letter-spacing:.08em;color:var(--muted);font-weight:600}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:7px 12px;font-size:.84rem;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+.btn.sm{padding:4px 10px;font-size:.78rem}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.btn.ghost{background:none;border-color:transparent;color:var(--muted)}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap;background:var(--surface-2);color:var(--muted)}
+.pill.ok{background:var(--ok-soft);color:var(--ok)} .pill.pre{background:var(--accent-soft);color:var(--accent)}
+.pill.bad{background:var(--bad-soft);color:var(--bad)} .pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.st-new{background:var(--bad);color:#fff} .pill.st-ack{background:var(--accent);color:var(--surface)} .pill.st-done{background:var(--ok-soft);color:var(--ok)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:none;padding:5px 11px;font-size:.8rem;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.empty{padding:18px 10px;text-align:center;color:var(--muted);font-size:.84rem}
+
+/* ---------- CCR 콘솔 ---------- */
+.ccr{max-width:1480px;margin:0 auto;padding:16px max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+.topbar{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:12px;margin-bottom:14px}
+.topbar h1{font-size:1.45rem;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:.86rem;margin-top:2px}
+.hdr-r{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.conn{display:inline-flex;align-items:center;gap:6px;font-size:.78rem;padding:4px 10px;border-radius:999px;background:var(--surface);border:1px solid var(--line)}
+.conn i{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.conn.on i{background:var(--ok)} .conn.local i{background:var(--warn)} .conn.err i{background:var(--bad)}
+.op{font-size:.8rem;color:var(--muted);display:inline-flex;align-items:center;gap:6px}
+.op input{width:116px;padding:5px 8px;border-radius:7px;border:1px solid var(--line);background:var(--surface)}
+.links{display:flex;gap:12px;font-size:.8rem}
+.links a{color:var(--accent);font-weight:600;text-decoration:none}
+.ccr-body{display:grid;grid-template-columns:minmax(0,1fr) 372px;gap:16px;align-items:start}
+.ccr-main{display:flex;flex-direction:column;gap:14px;min-width:0}
+.ccr-side{position:sticky;top:12px;display:flex;flex-direction:column;align-items:center;gap:10px}
+@media (max-width:1200px){.ccr-body{grid-template-columns:minmax(0,1fr)}.ccr-side{position:static}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0}
+.panel-h{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:10px}
+.panel-h h2{font-size:1rem;font-weight:600}
+.cnt{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:var(--warn);color:#fff;font-size:.72rem;font-family:var(--f-mono);margin-left:4px;vertical-align:2px}
+.cnt:empty{display:none}
+
+.duty{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin:0}
+.duty>div{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:9px 10px}
+.duty>div.c{border-color:var(--accent);background:var(--accent-soft)}
+.duty b{display:block;font-size:.84rem}
+.duty span:not(.who){font-size:.72rem;color:var(--muted);display:block}
+.who{display:inline-block;font-size:.64rem;font-weight:700;letter-spacing:.04em;padding:1px 6px;border-radius:5px;background:var(--surface-2);color:var(--muted);margin-bottom:3px}
+.duty .c .who{background:var(--accent);color:var(--surface)}
+.duty-note{grid-column:1/-1;margin:0;font-size:.76rem;color:var(--muted);padding:2px 2px 0}
+.duty-note b{display:inline;font-size:inherit;color:var(--fg)}
+@media (max-width:760px){.duty{grid-template-columns:1fr 1fr}}
+
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.kpis div{background:var(--surface);padding:10px 14px}
+.kpis b{display:block;font-family:var(--f-mono);font-size:1.35rem;font-weight:600}
+.kpis span{font-size:.76rem;color:var(--muted)}
+@media (max-width:640px){.kpis{grid-template-columns:1fr 1fr}}
+
+.flow{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+@media (max-width:1000px){.flow{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:620px){.flow{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.step{background:var(--surface-2);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.step-h{display:flex;align-items:center;gap:6px;font-size:.84rem;padding:0 2px}
+.step-h .sn{width:18px;height:18px;border-radius:50%;background:var(--fg);color:var(--bg);display:grid;place-items:center;font-size:.68rem;font-weight:700;flex-shrink:0}
+.step-h .zn{margin-left:auto;font-size:.66rem;color:var(--muted);white-space:nowrap}
+.vrow{display:flex;flex-direction:column;gap:1px;text-align:left;background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--ok);border-radius:8px;padding:7px 8px;min-width:0;width:100%}
+.vrow.st-pre{border-left-color:var(--accent);background:var(--accent-soft)}
+.vrow.st-bad{border-left-color:var(--bad);background:var(--bad-soft)}
+.vrow.sel{outline:2px solid var(--accent);outline-offset:1px}
+.vr-top{display:flex;align-items:center;gap:4px;justify-content:space-between;min-width:0}
+.vn{font-size:.74rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vr-mid{display:flex;align-items:baseline;gap:3px}
+.vv{font-size:1.08rem;font-weight:600}
+.vrow.st-bad .vv{color:var(--bad)} .vrow.st-pre .vv{color:var(--accent)}
+.vu{font-size:.7rem;color:var(--muted)}
+.vr-bot{display:flex;align-items:center;gap:6px}
+.vt{font-size:.64rem;color:var(--muted);white-space:nowrap}
+.spk{flex:1;height:18px;min-width:0;display:block}
+.chipx{font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:999px;white-space:nowrap}
+.chipx.r{background:var(--warn-soft);color:var(--warn)} .chipx.o{background:var(--accent);color:var(--surface)}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:.74rem;color:var(--muted);margin-top:10px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.lg-s{width:12px;height:12px;border-radius:3px;border:1px solid var(--line);border-left:4px solid}
+.lg-l{width:18px;height:0;border-top:2px solid}
+.lg-b{width:14px;height:10px;background:var(--accent-soft);border-radius:2px}
+
+.grid2{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:14px;align-items:start}
+@media (max-width:980px){.grid2{grid-template-columns:minmax(0,1fr)}}
+.chart svg{width:100%;height:auto;display:block}
+.dinfo{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:10px}
+.dinfo>div{background:var(--surface-2);border-radius:8px;padding:6px 9px}
+.dinfo .k{font-size:.68rem;color:var(--muted)} .dinfo .v{font-weight:600;font-size:.86rem}
+.dreason{margin:8px 0 0;font-size:.84rem;font-weight:600}
+
+.recs{display:flex;flex-direction:column;gap:10px}
+.rec{border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.rec.sev-bad,.rec.sev-safety{border-left-color:var(--bad)}
+.rec.sev-safety{background:var(--bad-soft)}
+.rec.hold{opacity:.72}
+.rec-h{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.rec-h .tm{margin-left:auto;font-size:.72rem;color:var(--muted);font-family:var(--f-mono)}
+.rec-r{font-size:.84rem}
+.rec-i{font-size:.8rem;color:var(--muted)}
+.rec-safe{font-size:.78rem;background:var(--surface);border:1px dashed var(--bad);color:var(--bad);border-radius:8px;padding:6px 8px}
+.lbl{font-size:.72rem;color:var(--muted);font-weight:600}
+.rec textarea{width:100%;padding:7px 9px;border-radius:8px;border:1px solid var(--line);background:var(--surface-2);resize:vertical;font-size:.84rem}
+.rec-f{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.rec-f select{padding:5px 8px;border-radius:7px;border:1px solid var(--line);background:var(--surface)}
+.lbl-in{font-size:.78rem;color:var(--muted);display:inline-flex;align-items:center;gap:6px}
+.rec-b{display:flex;flex-wrap:wrap;gap:6px}
+.okback{color:var(--ok);font-size:.78rem;font-weight:600}
+
+.ords{display:flex;flex-direction:column;gap:6px}
+.ord{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 10px;border:1px solid var(--line);border-radius:9px}
+.ord.overdue{background:var(--bad-soft);border-color:var(--bad)}
+.ord.st-closed{opacity:.55}
+.ord.st-help{border-color:var(--warn);background:var(--warn-soft)}
+.ord-t{font-weight:600;font-size:.86rem}
+.ord-s{font-size:.74rem;color:var(--muted)}
+.ord-m{font-size:.8rem;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+@media (max-width:640px){.ord{grid-template-columns:minmax(0,1fr)}}
+
+.log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;max-height:360px;overflow-y:auto;font-size:.8rem}
+.log li{display:grid;grid-template-columns:auto auto minmax(0,1fr);gap:8px;align-items:baseline;padding:5px 2px;border-bottom:1px solid var(--line)}
+.log .tm{font-family:var(--f-mono);font-size:.72rem;color:var(--muted)}
+.log .k{font-size:.64rem;font-weight:700;padding:1px 6px;border-radius:5px;background:var(--surface-2);color:var(--muted);white-space:nowrap}
+.log .k.detect{background:var(--accent-soft);color:var(--accent)} .log .k.esc{background:var(--bad-soft);color:var(--bad)}
+.log .k.order,.log .k.ccr{background:var(--accent);color:var(--surface)} .log .k.field{background:var(--ok-soft);color:var(--ok)}
+.log .k.recover{background:var(--ok);color:var(--surface)}
+
+.faults{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+@media (max-width:760px){.faults{grid-template-columns:1fr 1fr}}
+.faults button{border:1px solid var(--line);background:var(--surface-2);border-radius:8px;padding:7px 9px;text-align:left}
+.faults button b{display:block;font-size:.8rem}
+.faults button span{font-size:.7rem;color:var(--muted)}
+.faults button:disabled{opacity:.5}
+.faults button.safety b{color:var(--bad)}
+.sim-c{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px}
+
+.side-h{width:min(360px,100%);display:flex;flex-direction:column}
+.phone{position:relative;width:360px;max-width:100%;height:min(740px,calc(100vh - 110px));min-height:580px;border:1px solid var(--line);border-radius:28px;overflow:hidden;background:var(--bg);box-shadow:var(--shadow)}
+.connect{width:min(360px,100%);font-size:.8rem;display:flex;flex-direction:column;gap:6px}
+.connect .url{font-family:var(--f-mono);font-size:.76rem;word-break:break-all;background:var(--surface-2);padding:6px 8px;border-radius:7px}
+.qr{display:flex;justify-content:center}
+.qr svg,.qr img{width:150px;height:150px;background:#fff;padding:6px;border-radius:8px}
+
+/* ---------- 현장 작업자 단말 ---------- */
+.w-standalone .phone{width:100%;height:100vh;height:100dvh;min-height:0;border:0;border-radius:0;box-shadow:none}
+.w-app{position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg)}
+.w-top{display:flex;align-items:center;gap:8px;padding:calc(12px + env(safe-area-inset-top,0px)) 14px 8px;background:var(--surface);border-bottom:1px solid var(--line)}
+.w-ttl{flex:1;min-width:0;display:flex;flex-direction:column}
+.w-ttl b{font-size:1rem}
+.w-sub{font-size:.74rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.w-snd{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:5px 9px;font-size:.74rem;font-weight:600;white-space:nowrap}
+.w-snd.off{color:var(--muted)}
+.w-zones{display:flex;gap:6px;overflow-x:auto;padding:8px 14px;background:var(--surface);border-bottom:1px solid var(--line);scrollbar-width:none}
+.w-z{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 11px;font-size:.78rem;white-space:nowrap}
+.w-z[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+.w-conn{font-size:.72rem;color:var(--muted);padding:6px 14px 0;display:flex;align-items:center;gap:6px}
+.w-conn i{width:7px;height:7px;border-radius:50%;background:var(--ok);flex-shrink:0}
+.w-conn.warn i{background:var(--warn)} .w-conn.bad i{background:var(--bad)}
+.w-body{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:10px 14px 16px;display:flex;flex-direction:column;gap:10px}
+.w-nav{display:grid;grid-template-columns:1fr 1fr;background:var(--surface);border-top:1px solid var(--line);padding:4px 4px calc(4px + env(safe-area-inset-bottom,0px))}
+.w-nav button{border:0;background:none;padding:10px 0;font-size:.84rem;color:var(--muted)}
+.w-nav button[aria-current="page"]{color:var(--accent);font-weight:700}
+.w-badge{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;margin-left:5px;border-radius:999px;background:var(--bad);color:#fff;font-size:.68rem;font-family:var(--f-mono);font-weight:700;vertical-align:1px}
+.w-empty{background:var(--surface);border:1px dashed var(--line);border-radius:12px;padding:22px 14px;text-align:center;display:flex;flex-direction:column;gap:4px}
+.w-empty span{font-size:.8rem;color:var(--muted)}
+.w-sec{font-size:.76rem;font-weight:600;color:var(--muted);margin:4px 2px -2px}
+.w-note{font-size:.74rem;color:var(--muted);padding:0 2px}
+.oc{background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--accent);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:6px}
+.oc.urgent{border-left-color:var(--bad)}
+.oc.st-sent.urgent{box-shadow:0 0 0 2px var(--bad-soft)}
+.oc.st-done,.oc.st-closed{opacity:.62}
+.oc.st-help{border-left-color:var(--warn)}
+.oc-h{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.oc-h .tm{margin-left:auto;font-size:.72rem;color:var(--muted);font-family:var(--f-mono)}
+.oc-t{font-weight:700;font-size:1rem;line-height:1.35}
+.oc-v{font-size:.8rem;color:var(--muted)}
+.oc-v b{font-family:var(--f-mono);color:var(--fg)} .oc-v b.st-bad{color:var(--bad)} .oc-v b.st-pre{color:var(--accent)}
+.oc-a{font-size:.9rem;background:var(--surface-2);border-radius:8px;padding:8px 10px}
+.oc-i{font-size:.76rem;color:var(--muted)}
+.oc-safe{font-size:.78rem;color:var(--bad);font-weight:600}
+.w-btn{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:11px;font-weight:700;font-size:.9rem;width:100%}
+.w-btn.primary{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.w-btn.urgent{background:var(--bad);border-color:var(--bad);color:#fff}
+.w-btn.big{padding:15px;font-size:1rem}
+.w-vg{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.w-vg h4{padding:8px 12px;font-size:.78rem;background:var(--surface-2);display:flex;justify-content:space-between}
+.w-vr{display:flex;align-items:center;gap:8px;padding:8px 12px;border-top:1px solid var(--line);font-size:.84rem}
+.w-vr .nm{flex:1;min-width:0}
+.w-vr .tg{font-size:.66rem;color:var(--muted);font-family:var(--f-mono);display:block}
+.w-vr .vl{font-family:var(--f-mono);font-weight:600}
+.w-vr.st-bad .vl{color:var(--bad)} .w-vr.st-pre .vl{color:var(--accent)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ok);flex-shrink:0;display:inline-block}
+.dot.st-pre{background:var(--accent)} .dot.st-bad{background:var(--bad)}
+.w-ov{position:absolute;inset:0;z-index:20;display:flex;flex-direction:column;justify-content:center;gap:12px;padding:24px 20px;background:var(--surface)}
+.w-ov.urgent{background:var(--bad-soft)}
+.w-ov-k{font-size:.8rem;font-weight:700;color:var(--bad);letter-spacing:.03em}
+.w-ov.normal .w-ov-k{color:var(--accent)}
+.w-ov-t{font-size:1.35rem;font-weight:700;line-height:1.3}
+.w-ov-v{font-size:.86rem;color:var(--muted)}
+.w-ov-a{font-size:1rem;background:var(--surface);border-radius:12px;padding:12px;border:1px solid var(--line)}
+@media (prefers-reduced-motion:no-preference){.w-ov.urgent{animation:wflash .9s ease-in-out 3}}
+@keyframes wflash{50%{background:var(--surface)}}
+.w-scrim{position:absolute;inset:0;background:rgba(10,12,20,.45);z-index:15}
+.w-sheet{position:absolute;left:0;right:0;bottom:0;z-index:16;background:var(--surface);border-radius:18px 18px 0 0;padding:10px 16px calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:10px;max-height:88%;overflow-y:auto}
+.grab{width:40px;height:4px;border-radius:9px;background:var(--line);margin:0 auto 4px}
+.w-res{display:grid;gap:6px}
+.w-res button{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:10px 12px;text-align:left;display:flex;flex-direction:column}
+.w-res button span{font-size:.74rem;color:var(--muted);font-weight:400}
+.w-res button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.w-sheet textarea,.w-start input{width:100%;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--surface-2)}
+.w-sheet textarea{min-height:70px;resize:vertical}
+.w-start{position:absolute;inset:0;z-index:30;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:24px;overflow-y:auto}
+.w-start-in{width:100%;max-width:380px;display:flex;flex-direction:column;gap:10px}
+.w-start h2{font-size:1.3rem}
+.w-zsel{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.w-zsel button{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:11px;font-weight:600}
+.w-zsel button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+</style>
+</head>
+<body>
+
+<div class="ccr" id="ccr" hidden>
+  <header class="topbar">
+    <div>
+      <div class="eyebrow">AID 해커톤 · C주제 · 공정 변수 연동 데모</div>
+      <h1>공정 모니터링 · CCR 콘솔</h1>
+      <div class="sub">DCS 데이터를 읽기 전용으로 받아 감지·권고만 합니다. 판단과 운전 조작은 CCR이 합니다.</div>
+    </div>
+    <div class="hdr-r">
+      <span class="conn" id="conn"><i></i><span>연결 확인 중</span></span>
+      <label class="op">운전원 <input id="opName" autocomplete="off"></label>
+      <button class="btn sm" type="button" id="ccrSnd" aria-pressed="true">CCR 알림음 켬</button>
+      <nav class="links" aria-label="다른 화면"><a href="index.html">품질 대시보드</a><a href="live.html">품질 알림 앱</a></nav>
+    </div>
+  </header>
+
+  <div class="ccr-body">
+    <main class="ccr-main">
+      <section class="duty" aria-label="역할 분담">
+        <div><span class="who">시스템</span><b>① 감지·권고</b><span>DCS 값에서 이상 조짐을 찾아 조치안 제시</span></div>
+        <div class="c"><span class="who">CCR</span><b>② 판단·승인</b><span>지시 여부·내용·담당·우선순위 결정</span></div>
+        <div><span class="who">시스템</span><b>③ 현장 전달</b><span>담당 단말에 진동·소리, 미응답 시 재알림</span></div>
+        <div><span class="who">작업자</span><b>④ 조치·보고</b><span>확인·출동 → 완료 보고</span></div>
+        <div class="c"><span class="who">CCR</span><b>⑤ 확인·종료</b><span>DCS 값 회복을 보고 종료</span></div>
+        <p class="duty-note"><b>운전 조작(설정값 변경 등)은 DCS에서만</b> 합니다. 이 시스템은 DCS에 값을 쓰지 않고, 안전 알람·인터록은 DCS/SIS가 우선 처리합니다.</p>
+      </section>
+
+      <div class="kpis" id="kpis"></div>
+
+      <section class="panel">
+        <div class="panel-h"><h2>공정 흐름 · 변수 현황</h2><span class="note">변수를 누르면 아래에 추세가 나옵니다</span></div>
+        <div class="flow" id="flow"></div>
+        <div class="legend">
+          <span><i class="lg-s" style="border-left-color:var(--ok)"></i>정상</span>
+          <span><i class="lg-s" style="border-left-color:var(--accent);background:var(--accent-soft)"></i>이탈 예고 (한계 근접·추세)</span>
+          <span><i class="lg-s" style="border-left-color:var(--bad);background:var(--bad-soft)"></i>운전한계 이탈</span>
+          <span><span class="chipx r">권고 대기</span> CCR 판단 전</span>
+          <span><span class="chipx o">조치 중</span> 현장 지시 진행</span>
+        </div>
+      </section>
+
+      <div class="grid2">
+        <section class="panel">
+          <div class="panel-h"><h2 id="detTitle">변수 추세</h2></div>
+          <div id="detail"></div>
+        </section>
+        <section class="panel">
+          <div class="panel-h"><h2>CCR 판단 대기 권고<span class="cnt" id="recCnt"></span></h2><span class="note">승인한 것만 현장으로 갑니다</span></div>
+          <div class="recs" id="recs"></div>
+        </section>
+      </div>
+
+      <div class="grid2">
+        <section class="panel">
+          <div class="panel-h"><h2>현장 지시 현황</h2><span class="note">미응답 30초면 빨갛게 표시</span></div>
+          <div id="orders"></div>
+        </section>
+        <section class="panel">
+          <div class="panel-h"><h2>이력</h2><span class="note">감지 → 판단 → 지시 → 조치 기록</span></div>
+          <ol class="log" id="log"></ol>
+        </section>
+      </div>
+
+      <section class="panel">
+        <div class="panel-h"><h2>데모 컨트롤 <span class="note">(가상 DCS 데이터)</span></h2><span class="note" id="simStat"></span></div>
+        <div class="faults" id="faults"></div>
+        <div class="sim-c">
+          <button class="btn sm" type="button" id="runBtn">일시정지</button>
+          <div class="seg" role="group" aria-label="진행 속도">
+            <button type="button" data-speed="1" aria-pressed="true">보통</button>
+            <button type="button" data-speed="2" aria-pressed="false">빠르게</button>
+            <button type="button" data-speed="4" aria-pressed="false">매우 빠르게</button>
+          </div>
+          <label class="note"><input type="checkbox" id="autoInj"> 자동으로 이상 발생</label>
+          <button class="btn sm" type="button" id="resetBtn">처음부터 다시</button>
+          <span class="note">발표용으로 공정 변화 속도를 압축했습니다 (수십 분 걸릴 변화를 수십 초로).</span>
+        </div>
+      </section>
+    </main>
+
+    <aside class="ccr-side" aria-label="현장 작업자 단말 미리보기">
+      <div class="side-h"><b>현장 작업자 단말</b><span class="note">미리보기 · 실제 휴대폰에도 같은 화면이 뜹니다</span></div>
+      <div class="phone" id="embedPhone"></div>
+      <section class="panel connect" id="connect"></section>
+    </aside>
+  </div>
+</div>
+
+<div id="wroot" class="w-standalone" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js" defer></script>
+<script>
+(function(){
+'use strict';
+const ROLE=new URLSearchParams(location.search).get('role')==='worker'?'worker':'ccr';
+const INTERVAL=1500, HIST=90, PRE=0.7, OVERDUE=30000;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=(v,d)=>Number.isFinite(v)?v.toFixed(d):'–';
+const hms=t=>new Date(t).toTimeString().slice(0,8);
+const last=a=>a[a.length-1];
+const gauss=()=>{let u=0;while(!u)u=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*Math.random())};
+const store={get:(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:v}catch(e){return d}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}};
+const DEVICE=(()=>{try{let d=sessionStorage.getItem('proc.dev');if(!d){d=Math.random().toString(36).slice(2,8);sessionStorage.setItem('proc.dev',d)}return d}catch(e){return Math.random().toString(36).slice(2,8)}})();
+const RANK={ok:0,pre:1,bad:2};
+// 추세 예측 조건: 최근 win회 직선 적합도 r2 이상, SP에서 z·σ 이상 벗어남, h회 안에 운전 한계 도달 / hold: 예고 최소 유지 횟수
+const PRED={win:10,r2:0.6,z:2.5,h:30,hold:8}; // 정상 운전 4000회 오경보 0건 · 이상 8종 64회 중 63회 이탈 전 예고 (시뮬레이션으로 조정)
+
+/* ===================== 공정 정의 (가상 형광체 분말 라인) ===================== */
+const ZONES=['소성','분쇄·정제','건조·포장'];
+const STEPS=[
+  {id:'fire',n:1,name:'소성',zone:'소성'},
+  {id:'mill',n:2,name:'분쇄',zone:'분쇄·정제'},
+  {id:'wash',n:3,name:'세정·여과',zone:'분쇄·정제'},
+  {id:'dry',n:4,name:'건조',zone:'건조·포장'},
+  {id:'pack',n:5,name:'분급·포장',zone:'건조·포장'}
+];
+// lo/hi = 운전 한계(DCS 알람 설정값), sp = 설정값, noise = 정상 변동(1σ)
+const VARS=[
+  {tag:'TIC-101',step:'fire',name:'소성로 온도',unit:'℃',sp:1350,noise:1.5,dec:0,lo:1335,hi:1365,q:'상대휘도'},
+  {tag:'FIC-102',step:'fire',name:'분위기 가스 유량',unit:'L/min',sp:40,noise:0.4,dec:1,lo:36,hi:44,q:'상대휘도'},
+  {tag:'PIC-103',step:'fire',name:'노내 압력',unit:'Pa',sp:50,noise:1.2,dec:0,lo:40,hi:60,q:'상대휘도'},
+  {tag:'AI-104',step:'fire',name:'노내 산소 농도',unit:'ppm',sp:20,noise:1.5,dec:0,lo:null,hi:50,q:'안전 (수소 분위기)',safety:true},
+  {tag:'SI-201',step:'mill',name:'볼밀 회전수',unit:'rpm',sp:60,noise:0.3,dec:1,lo:57,hi:63,q:'입도 D50'},
+  {tag:'II-202',step:'mill',name:'볼밀 모터 전류',unit:'A',sp:32,noise:0.4,dec:1,lo:28,hi:36,q:'입도 D50'},
+  {tag:'PDI-301',step:'wash',name:'필터 차압',unit:'kPa',sp:45,noise:1,dec:0,lo:null,hi:80,q:'순도'},
+  {tag:'AI-302',step:'wash',name:'세정수 전도도',unit:'μS/cm',sp:5,noise:0.3,dec:1,lo:null,hi:10,q:'순도'},
+  {tag:'TIC-401',step:'dry',name:'건조기 온도',unit:'℃',sp:120,noise:0.8,dec:1,lo:115,hi:125,q:'수분'},
+  {tag:'MI-402',step:'dry',name:'배기 습도',unit:'%RH',sp:18,noise:0.8,dec:1,lo:null,hi:25,q:'수분'},
+  {tag:'SI-501',step:'pack',name:'분급기 로터 속도',unit:'rpm',sp:3000,noise:8,dec:0,lo:2950,hi:3050,q:'입도 D50'},
+  {tag:'MI-502',step:'pack',name:'포장실 습도',unit:'%RH',sp:35,noise:1,dec:0,lo:null,hi:45,q:'수분'}
+];
+// 변수·방향별 권고 조치 [현장 지시 문구, 예상 품질 영향]
+const ACT={
+  'TIC-101:L':['소성로 2존 히터 출력·전류를 확인하고, 현장 열전대(TE-101) 지시값을 DCS 값과 비교해 보고하세요.','휘도 저하 (활성제 결정화 부족)'],
+  'TIC-101:H':['히터 출력 제한 상태와 냉각 공기 댐퍼 개도를 점검하세요.','입자 소결·조대화 → 입도 상승'],
+  'FIC-102:L':['N₂/H₂ 공급 압력 게이지와 유량계 전단 필터 막힘을 확인하세요.','환원 분위기 부족 → 휘도 저하'],
+  'FIC-102:H':['유량 조절밸브(FV-102) 개도와 공급 레귤레이터를 점검하세요.','가스 과소비, 노내 압력 변동'],
+  'PIC-103:L':['배기 댐퍼 개도와 노 도어·관측창 실링 상태를 점검하세요.','외기 유입 → 산화로 휘도 저하'],
+  'PIC-103:H':['배기 덕트 막힘과 배기 팬 동작을 확인하세요.','노내 가스 정체, 분위기 불균일'],
+  'AI-104:H':['DCS 산소 알람·인터록 동작을 먼저 확인합니다. 수소 분위기 구역이므로 현장 접근은 CCR 지시와 안전 절차를 따르고, 노 도어 실링은 안전 조치 후 점검하세요.','안전 — 수소 분위기에 산소 유입'],
+  'SI-201:*':['볼밀 구동 벨트 장력과 인버터 상태를 확인하세요.','분쇄 에너지 변화 → 입도 변동'],
+  'II-202:H':['볼 마모·장입량을 점검하고, 다음 배치 분쇄 시간 조정이 필요한지 보고하세요.','입도 D50 상승'],
+  'II-202:L':['볼 장입량과 원료 투입량을 확인하세요.','과분쇄 → 미분 증가'],
+  'PDI-301:H':['필터 역세척을 실시하고, 차압이 회복되지 않으면 필터를 교체하세요.','세정 불량 → 순도 저하'],
+  'AI-302:H':['세정수 공급 라인과 이온교환 수지 포화 여부를 확인하세요.','불순물 잔류 → 순도 저하'],
+  'TIC-401:L':['건조기 열풍 댐퍼 동작과 히터 상태를 확인하세요.','건조 부족 → 수분 증가'],
+  'TIC-401:H':['온도 조절기 설정과 히터 과열 방지 장치를 점검하세요.','과건조·응집'],
+  'MI-402:H':['배기 팬 동작과 배기 덕트 막힘을 확인하세요.','건조 부족 → 수분 증가'],
+  'SI-501:*':['분급기 로터 구동부와 베어링 진동을 확인하세요.','입도 분포 변동'],
+  'MI-502:H':['제습기 가동 상태를 확인하고, 포장 대기 중인 제품은 즉시 밀봉하세요.','흡습 → 수분 증가']
+};
+// 데모용 설비 이상 (k = 시작 후 측정 횟수)
+const FAULTS={
+  heater:{label:'소성로 히터 열화',desc:'소성 온도 서서히 하락',tag:'TIC-101',fn:k=>-Math.min(25,0.5*k)},
+  gas:{label:'가스 공급 압력 저하',desc:'분위기 가스 유량 감소',tag:'FIC-102',fn:k=>-Math.min(6,0.15*k)},
+  ball:{label:'분쇄볼 마모',desc:'볼밀 모터 전류 상승',tag:'II-202',fn:k=>Math.min(6,0.12*k)},
+  filter:{label:'필터 막힘',desc:'필터 차압 상승',tag:'PDI-301',fn:k=>Math.min(50,1.2*k)},
+  resin:{label:'이온교환 수지 포화',desc:'세정수 전도도 상승',tag:'AI-302',fn:k=>Math.min(8,0.15*k)},
+  damper:{label:'건조기 댐퍼 고착',desc:'건조 온도 하락',tag:'TIC-401',fn:k=>-Math.min(9,0.2*k)},
+  dehum:{label:'포장실 제습기 정지',desc:'포장실 습도 상승',tag:'MI-502',fn:k=>Math.min(15,0.4*k)},
+  o2:{label:'노 도어 실링 불량',desc:'노내 산소 상승 (안전)',tag:'AI-104',fn:k=>Math.min(70,2*k)}
+};
+const ORDST={sent:'지시 전송',ack:'조치 중',help:'지원 요청',done:'완료 보고',closed:'종료'};
+const STTXT={ok:'정상',pre:'이탈 예고',bad:'운전한계 이탈'};
+const LOGK={detect:'감지',esc:'악화',order:'지시',field:'현장',ccr:'CCR',sys:'시스템',recover:'회복'};
+const VAR=tag=>VARS.find(v=>v.tag===tag);
+const zoneOf=V=>STEPS.find(s=>s.id===V.step).zone;
+const rangeTxt=V=>V.lo!=null&&V.hi!=null?`${fmt(V.lo,V.dec)}~${fmt(V.hi,V.dec)} ${V.unit}`:V.hi!=null?`${fmt(V.hi,V.dec)} ${V.unit} 이하`:`${fmt(V.lo,V.dec)} ${V.unit} 이상`;
+const actOf=(tag,dir)=>{const a=ACT[tag+':'+dir]||ACT[tag+':*']||['해당 설비 상태를 현장에서 확인하고 CCR에 보고하세요.','—'];return {act:a[0],impact:a[1]}};
+const titleOf=(sev,dir)=>sev==='bad'?(dir==='H'?'상한 이탈':'하한 이탈'):(dir==='H'?'상승 · 이탈 예고':'하강 · 이탈 예고');
+const stCol=st=>st==='bad'?'var(--bad)':st==='pre'?'var(--accent)':'var(--fg)';
+
+/* ===================== 메시지 버스 =====================
+   서버(serve.ps1)로 열면 /api 중계로 PC ↔ 휴대폰 연결,
+   파일로 열면 같은 화면(과 같은 브라우저 탭) 안에서만 연결 */
+const Bus=(()=>{
+  const subs=[],readyCbs=[];let mode='local',since=0,info=null,ok=true,isReady=false,bc=null;
+  try{bc=new BroadcastChannel('lotqc-process-v1')}catch(e){}
+  const deliver=m=>subs.slice().forEach(f=>{try{f(m)}catch(e){console.error(e)}});
+  if(bc)bc.onmessage=e=>deliver(e.data);
+  const setReady=()=>{if(isReady)return;isReady=true;readyCbs.splice(0).forEach(f=>f())};
+  async function pollOnce(){
+    try{const r=await fetch('api/msg?since='+since,{cache:'no-store'});const a=await r.json();
+      a.forEach(x=>{since=Math.max(since,x.id);deliver(Object.assign({},x.m,{_id:x.id,_ts:x.ts}))});ok=true}catch(e){ok=false}
+  }
+  function loop(){setTimeout(async()=>{await pollOnce();loop()},1000)}
+  function stateLoop(){setTimeout(async()=>{try{const r=await fetch('api/state',{cache:'no-store'});const s=await r.json();if(s&&s.vars)deliver({type:'state',s})}catch(e){}stateLoop()},2000)}
+  async function start(){
+    if(/^https?:$/.test(location.protocol)){
+      try{const r=await fetch('api/info',{cache:'no-store'});if(r.ok){info=await r.json();mode='server';since=ROLE==='ccr'?(info.lastId||0):0}}catch(e){}
+    }
+    if(mode==='server'){await pollOnce();setReady();loop();if(ROLE==='worker')stateLoop()}else setReady();
+  }
+  function send(type,p){const m=Object.assign({type},p);
+    if(mode==='server')fetch('api/msg',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(m)}).catch(()=>{ok=false});
+    else{deliver(m);if(bc)try{bc.postMessage(m)}catch(e){}}}
+  function putState(s){deliver({type:'state',s});
+    if(mode==='server')fetch('api/state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(s)}).catch(()=>{});
+    else if(bc)try{bc.postMessage({type:'state',s})}catch(e){}}
+  return {on:f=>subs.push(f),send,putState,start,ready:f=>isReady?f():readyCbs.push(f),
+    get mode(){return mode},get ok(){return ok},get info(){return info}};
+})();
+
+/* ===================== 소리 · 진동 ===================== */
+let actx=null;
+function unlockAudio(){try{if(!actx){const AC=window.AudioContext||window.webkitAudioContext;if(AC)actx=new AC()}if(actx&&actx.state==='suspended')actx.resume()}catch(e){}}
+document.addEventListener('pointerdown',unlockAudio,{passive:true});
+document.addEventListener('keydown',unlockAudio);
+const SOUND={
+  urgent:{type:'square',vol:.16,seq:[[1320,.16,.07],[1320,.16,.07],[1320,.16,.35],[1320,.16,.07],[1320,.16,.07],[1320,.16,0]]},
+  normal:{type:'sine',vol:.3,seq:[[880,.16,.08],[1175,.24,0]]},
+  chime:{type:'sine',vol:.14,seq:[[660,.12,.05],[880,.16,0]]}
+};
+function play(name){
+  if(!actx||actx.state!=='running')return;const P=SOUND[name];let t=actx.currentTime+.02;
+  P.seq.forEach(([f,d,gap])=>{const o=actx.createOscillator(),g=actx.createGain();o.type=P.type;o.frequency.value=f;
+    g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(P.vol,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+d);
+    o.connect(g);g.connect(actx.destination);o.start(t);o.stop(t+d+.03);t+=d+gap});
+}
+function vibrate(p){try{if(navigator.vibrate)navigator.vibrate(p)}catch(e){}}
+
+/* ===================== 판정 ===================== */
+function linfit(ys){const n=ys.length,xm=(n-1)/2,ym=ys.reduce((a,b)=>a+b,0)/n;let sxy=0,sxx=0,syy=0;
+  ys.forEach((y,x)=>{sxy+=(x-xm)*(y-ym);sxx+=(x-xm)**2;syy+=(y-ym)**2});const b=sxy/sxx;
+  return {b,r2:syy?sxy*sxy/(sxx*syy):0,yl:ym+b*(n-1-xm)}}
+// 이탈: 운전 한계 밖 / 예고: 최근 3회 모두 한계까지 70% 넘음, 또는 최근 12회 추세가 25회 안에 한계 도달
+function judge(V,h){
+  const v=last(h),u=V.unit,d=V.dec;
+  if(V.hi!=null&&v>V.hi)return {st:'bad',dir:'H',reason:`상한 운전한계 ${fmt(V.hi,d)}${u} 초과`};
+  if(V.lo!=null&&v<V.lo)return {st:'bad',dir:'L',reason:`하한 운전한계 ${fmt(V.lo,d)}${u} 미달`};
+  const l3=h.slice(-3);
+  if(V.hi!=null&&l3.every(x=>x>V.sp+PRE*(V.hi-V.sp)))return {st:'pre',dir:'H',reason:`상한 운전한계 근접 (여유 ${fmt(V.hi-v,d)}${u})`};
+  if(V.lo!=null&&l3.every(x=>x<V.sp-PRE*(V.sp-V.lo)))return {st:'pre',dir:'L',reason:`하한 운전한계 근접 (여유 ${fmt(v-V.lo,d)}${u})`};
+  if(h.length>=PRED.win){const f=linfit(h.slice(-PRED.win)),lim=f.b>0?V.hi:V.lo;
+    if(lim!=null&&f.r2>=PRED.r2&&Math.abs(f.yl-V.sp)>PRED.z*V.noise&&Math.sign(f.yl-V.sp)===Math.sign(f.b)){
+      const steps=(lim-f.yl)/f.b;
+      if(steps>0&&steps<=PRED.h){const sec=Math.max(1,Math.round(steps*INTERVAL/S.speed/1000));
+        return {st:'pre',dir:f.b>0?'H':'L',reason:`이대로면 약 ${sec}초 뒤 ${f.b>0?'상한':'하한'} 운전한계 도달 예상`,fc:{b:f.b,yl:f.yl,steps}}}}}
+  return {st:'ok',dir:null,reason:''};
+}
+
+/* ===================== CCR ===================== */
+const S={n:0,vars:{},faults:[],recs:[],orders:[],log:[],devices:{},speed:1,running:true,auto:false,sel:'TIC-101',rid:0,oid:0,timer:null,
+  op:store.get('proc.op','CCR 운전원'),snd:true,sid:''};
+const D={recs:true,orders:true,log:true};
+function logE(kind,text){S.log.unshift({t:Date.now(),kind,text});if(S.log.length>80)S.log.pop();D.log=true}
+const openRec=tag=>S.recs.find(x=>x.tag===tag&&(x.status==='pending'||x.status==='hold'));
+const openOrd=tag=>S.orders.find(o=>o.tag===tag&&o.status!=='closed');
+
+function evaluate(V,s){
+  let r=judge(V,s.h);
+  // 불감대(데드밴드): 한 번 예고·이탈이 뜨면 값이 SP 쪽으로 충분히(한계까지 거리의 30% 안) 돌아올 때까지 예고 유지 → 깜빡임 방지
+  if(r.st==='ok'&&s.st!=='ok'&&s.dir){const lim=s.dir==='H'?V.hi:V.lo,v=last(s.h);
+    if(S.n<s.holdUntil||(lim!=null&&(s.dir==='H'?v>V.sp+0.3*(lim-V.sp):v<V.sp-0.3*(V.sp-lim))))
+      r={st:'pre',dir:s.dir,reason:s.st==='bad'?'운전한계 안으로 들어왔지만 아직 설정값으로 복귀 전':s.reason}}
+  if(r.st!=='ok'&&s.st==='ok')s.holdUntil=S.n+PRED.hold;
+  s.st=r.st;s.dir=r.dir;s.reason=r.reason;s.fc=r.fc||null;
+  if(r.st==='ok'){
+    s.okRun++;if(s.okRun>=3)s.supp=0;
+    if(s.okRun===5){const rec=openRec(V.tag);if(rec){rec.status='cleared';D.recs=true;logE('sys',`${V.name}: 정상 범위로 돌아와 권고 자동 해제`)}}
+    return;
+  }
+  s.okRun=0;
+  const rec=openRec(V.tag),ord=openOrd(V.tag);
+  if(rec){
+    if(RANK[r.st]>RANK[rec.sev]){rec.sev=r.st;rec.reason=r.reason;rec.dir=r.dir;rec.esc=true;rec.draft.pri='긴급';if(rec.status==='hold')rec.status='pending';
+      D.recs=true;logE('esc',`${V.name}: ${r.reason} — 예고에서 이탈로 악화`);if(S.snd)play('chime')}
+    return;
+  }
+  if(ord){
+    if(r.st==='bad'&&!ord.escalated&&(ord.status==='sent'||ord.status==='ack')){
+      ord.escalated=true;ord.sev='bad';ord.pri='긴급';ord.esc++;ord.reason=r.reason;ord.title=`${V.name} ${titleOf('bad',r.dir)}`;
+      Bus.send('order',{order:ord});D.orders=true;logE('esc',`${V.name}: 조치 중 운전한계 이탈로 악화 — 현장 단말 긴급 재알림`)}
+    return;
+  }
+  if(RANK[r.st]>(s.supp||0))newRec(V,r);
+}
+function newRec(V,r){
+  const a=actOf(V.tag,r.dir);
+  S.recs.unshift({id:++S.rid,tag:V.tag,dir:r.dir,sev:r.st,reason:r.reason,at:Date.now(),val:last(S.vars[V.tag].h),status:'pending',safety:!!V.safety,esc:false,
+    draft:{text:a.act,zone:zoneOf(V),pri:(r.st==='bad'||V.safety)?'긴급':'일반'}});
+  D.recs=true;logE('detect',`${V.name} (${V.tag}): ${r.reason}`);if(S.snd)play('chime');
+}
+function dispatch(rec){
+  const V=VAR(rec.tag),a=actOf(rec.tag,rec.dir);
+  const o={sid:S.sid,id:++S.oid,tag:V.tag,title:`${V.name} ${titleOf(rec.sev,rec.dir)}`,act:(rec.draft.text||'').trim()||a.act,impact:a.impact,
+    zone:rec.draft.zone,pri:rec.draft.pri,sev:rec.sev,reason:rec.reason,safety:rec.safety,status:'sent',sentAt:Date.now(),by:S.op,esc:0,escalated:rec.sev==='bad'};
+  rec.status='sent';rec.orderId=o.id;S.orders.unshift(o);Bus.send('order',{order:o});D.recs=D.orders=true;
+  logE('order',`${S.op} → ${o.zone} 담당: ${o.title} (${o.pri})`);
+}
+function closeOrder(o){
+  const wasOpen=o.status==='sent'||o.status==='ack';o.status='closed';o.closedAt=Date.now();o.cancelled=wasOpen;
+  Bus.send('order',{order:o});D.orders=true;
+  const s=S.vars[o.tag];if(s.st!=='ok')s.supp=RANK[s.st];
+  logE('ccr',`${S.op}: ${VAR(o.tag).name} 지시 ${wasOpen?'취소':'확인·종료'}`);
+}
+function inject(key){
+  if(!FAULTS[key]||S.faults.some(f=>f.key===key))return;
+  S.faults.push({key,k:0,off:0,rec:false});logE('sys',`[데모] ${FAULTS[key].label} 상황 시작`);renderSim();
+}
+function onCcrMsg(m){
+  if(m.type==='hb'){if(m.device)S.devices[m.device]={zone:m.zone,name:m.name,at:Date.now(),embedded:!!m.embedded};return}
+  if((m.type!=='ack'&&m.type!=='done')||m.sid!==S.sid)return;
+  const o=S.orders.find(x=>x.id===m.oid);if(!o)return;
+  if(m.type==='ack'&&o.status==='sent'){
+    o.status='ack';o.ackAt=Date.now();o.ackBy=m.by;Bus.send('order',{order:o});D.orders=true;
+    logE('field',`${m.by}: 확인·출동 — ${VAR(o.tag).name} (응답 ${Math.round((o.ackAt-o.sentAt)/1000)}초)`);
+  }else if(m.type==='done'&&(o.status==='sent'||o.status==='ack')){
+    o.doneAt=Date.now();if(!o.ackAt){o.ackAt=o.doneAt;o.ackBy=m.by}
+    o.status=m.result==='지원 필요'?'help':'done';o.result=m.result;o.note=m.note||'';o.doneBy=m.by;
+    Bus.send('order',{order:o});D.orders=true;
+    logE('field',`${m.by}: 완료 보고 — ${m.result}${m.note?` (${m.note})`:''}`);
+    if(m.result==='조치 완료'){const fs=S.faults.filter(f=>FAULTS[f.key].tag===o.tag&&!f.rec);fs.forEach(f=>f.rec=true);
+      if(fs.length){logE('recover',`${VAR(o.tag).name}: 현장 조치 반영, 정상 범위로 회복 중`);renderSim()}}
+  }
+}
+function tick(){
+  if(S.auto&&!S.faults.length&&Math.random()<1/40){const ks=Object.keys(FAULTS).filter(k=>k!=='o2');inject(ks[Math.floor(Math.random()*ks.length)])}
+  const off={};
+  S.faults.forEach(f=>{const F=FAULTS[f.key];if(f.rec)f.off*=0.75;else{f.off=F.fn(f.k);f.k++}off[F.tag]=(off[F.tag]||0)+f.off});
+  const n0=S.faults.length;
+  S.faults=S.faults.filter(f=>{const V=VAR(FAULTS[f.key].tag);if(f.rec&&Math.abs(f.off)<V.noise*0.3){logE('recover',`${V.name}: 정상 운전 복귀`);return false}return true});
+  if(S.faults.length!==n0)renderSim();
+  S.n++;
+  VARS.forEach(V=>{const s=S.vars[V.tag];s.h.push(+(V.sp+gauss()*V.noise+(off[V.tag]||0)).toFixed(V.dec+1));if(s.h.length>HIST)s.h.shift();evaluate(V,s)});
+  S.orders.forEach(o=>{if(o.status==='sent'&&!o.od&&Date.now()-o.sentAt>OVERDUE){o.od=true;logE('sys',`${o.zone} 담당 30초 미응답 — 단말은 계속 재알림 중, 필요하면 무전으로 확인하세요`)}});
+  Bus.putState({sid:S.sid,t:Date.now(),vars:VARS.map(V=>({tag:V.tag,v:last(S.vars[V.tag].h),st:S.vars[V.tag].st}))});
+  renderCCR();
+}
+function schedule(){clearTimeout(S.timer);if(S.running)S.timer=setTimeout(()=>{tick();schedule()},INTERVAL/S.speed)}
+function initCCR(){
+  clearTimeout(S.timer);S.sid=Math.random().toString(36).slice(2,8);
+  S.faults=[];S.recs=[];S.orders=[];S.log=[];S.rid=0;S.oid=0;S.running=true;
+  VARS.forEach(V=>{const s=S.vars[V.tag]={h:[],st:'ok',dir:null,reason:'',fc:null,okRun:9,supp:0,holdUntil:0};
+    for(let i=0;i<HIST;i++)s.h.push(+(V.sp+gauss()*V.noise).toFixed(V.dec+1))});
+  D.recs=D.orders=D.log=true;logE('sys','CCR 세션 시작 · 현장 단말 지시 목록 초기화');
+  Bus.send('reset',{sid:S.sid});renderSim();renderCCR();schedule();
+}
+
+/* ---------- CCR 화면 ---------- */
+function niceStep(x){const p=Math.pow(10,Math.floor(Math.log10(x)));const m=x/p;return (m<1.5?1:m<3?2:m<7?5:10)*p}
+function sparkSVG(V,s){
+  const h=s.h.slice(-40),top=V.hi!=null?V.hi:V.sp+(V.sp-V.lo),bot=V.lo!=null?V.lo:V.sp-(V.hi-V.sp);
+  const hi=Math.max(top,...h),lo=Math.min(bot,...h),x=i=>(i*80/(h.length-1)).toFixed(1),y=v=>(1+(hi-v)*16/(hi-lo||1)).toFixed(1);
+  const col=s.st==='bad'?'var(--bad)':s.st==='pre'?'var(--accent)':'var(--muted)';
+  const lim=v=>`<line x1="0" x2="80" y1="${y(v)}" y2="${y(v)}" stroke="var(--bad)" stroke-width="1" stroke-dasharray="2 2" vector-effect="non-scaling-stroke" opacity=".7"/>`;
+  return (V.hi!=null?lim(V.hi):'')+(V.lo!=null?lim(V.lo):'')+`<polyline points="${h.map((v,i)=>x(i)+','+y(v)).join(' ')}" fill="none" stroke="${col}" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`;
+}
+function buildFlow(){
+  $('flow').innerHTML=STEPS.map(st=>`<div class="step"><div class="step-h"><span class="sn">${st.n}</span><b>${st.name}</b><span class="zn">${st.zone}</span></div>`+
+    VARS.filter(V=>V.step===st.id).map(V=>`<button type="button" class="vrow" data-tag="${V.tag}"><span class="vr-top"><span class="vn">${esc(V.name)}</span><span data-chip></span></span><span class="vr-mid"><span class="vv num" data-v></span><span class="vu">${esc(V.unit)}</span></span><span class="vr-bot"><span class="vt mono">${V.tag}</span><svg class="spk" viewBox="0 0 80 18" preserveAspectRatio="none" aria-hidden="true" data-spk></svg></span></button>`).join('')+`</div>`).join('');
+}
+function updateFlow(){
+  $('flow').querySelectorAll('.vrow').forEach(b=>{const V=VAR(b.dataset.tag),s=S.vars[V.tag];if(!s)return;
+    b.className=`vrow st-${s.st}${V.tag===S.sel?' sel':''}`;
+    b.querySelector('[data-v]').textContent=fmt(last(s.h),V.dec);
+    const ord=openOrd(V.tag),rec=openRec(V.tag);
+    const chip=ord?`<span class="chipx o">${ORDST[ord.status]}</span>`:rec?'<span class="chipx r">권고 대기</span>':'';
+    const c=b.querySelector('[data-chip]');if(c.dataset.h!==chip){c.innerHTML=chip;c.dataset.h=chip}
+    b.querySelector('[data-spk]').innerHTML=sparkSVG(V,s);
+    b.setAttribute('aria-label',`${V.name} ${fmt(last(s.h),V.dec)} ${V.unit}, ${STTXT[s.st]}`)});
+}
+function bigChart(V,s){
+  const W=640,H=230,PL=58,PR=14,PT=14,PB=24,h=s.h,n=h.length,fc=s.fc;
+  const ext=fc?Math.min(25,Math.ceil(fc.steps)+3):0,slots=n+ext;
+  const pH=V.hi!=null?V.sp+PRE*(V.hi-V.sp):null,pL=V.lo!=null?V.sp-PRE*(V.sp-V.lo):null;
+  const cand=[...h,V.sp];if(V.hi!=null)cand.push(V.hi);if(V.lo!=null)cand.push(V.lo);if(fc)cand.push(fc.yl+fc.b*ext);
+  if(V.lo==null)cand.push(V.sp-(V.hi-V.sp)*0.4);if(V.hi==null)cand.push(V.sp+(V.sp-V.lo)*0.4);
+  let lo=Math.min(...cand),hi=Math.max(...cand);const pad=(hi-lo)*0.08||1;lo-=pad;hi+=pad;
+  const x=i=>PL+i*(W-PL-PR)/Math.max(1,slots-1),y=v=>PT+(hi-v)*(H-PT-PB)/(hi-lo);
+  let g=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(V.name)} 추세 차트">`;
+  if(pH!=null)g+=`<rect x="${PL}" y="${y(V.hi)}" width="${W-PL-PR}" height="${Math.max(0,y(pH)-y(V.hi))}" fill="var(--accent-soft)"/>`;
+  if(pL!=null)g+=`<rect x="${PL}" y="${y(pL)}" width="${W-PL-PR}" height="${Math.max(0,y(V.lo)-y(pL))}" fill="var(--accent-soft)"/>`;
+  const stp=niceStep((hi-lo)/4),td=Math.max(0,-Math.floor(Math.log10(stp)+1e-9));
+  for(let t=Math.ceil(lo/stp)*stp;t<=hi+1e-9;t+=stp)g+=`<line x1="${PL}" x2="${W-PR}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)"/><text x="${PL-8}" y="${y(t)+4}" text-anchor="end" font-size="11" fill="var(--muted)" font-family="var(--f-mono)">${t.toFixed(td)}</text>`;
+  const hl=(v,col,dash,lab)=>v==null?'':`<line x1="${PL}" x2="${W-PR}" y1="${y(v)}" y2="${y(v)}" stroke="${col}" stroke-width="1.6" ${dash?`stroke-dasharray="${dash}"`:''}/><text x="${PL+6}" y="${y(v)-5}" font-size="11" font-weight="600" fill="${col}" font-family="var(--f-mono)">${lab} ${fmt(v,V.dec)}</text>`;
+  g+=hl(V.hi,'var(--bad)','6 4','H 한계')+hl(V.lo,'var(--bad)','6 4','L 한계')+hl(V.sp,'var(--muted)','','SP');
+  g+=`<path d="${h.map((v,i)=>(i?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)).join('')}" fill="none" stroke="var(--fg)" stroke-width="1.6" stroke-linejoin="round" opacity=".85"/>`;
+  if(fc){const lim=fc.b>0?V.hi:V.lo,xc=x(n-1+fc.steps);
+    g+=`<line x1="${x(n-1)}" y1="${y(fc.yl)}" x2="${x(n-1+ext)}" y2="${y(fc.yl+fc.b*ext)}" stroke="var(--accent)" stroke-width="2" stroke-dasharray="5 4"/><circle cx="${xc}" cy="${y(lim)}" r="6" fill="none" stroke="var(--bad)" stroke-width="2"/><text x="${Math.min(xc,W-PR-30)}" y="${y(lim)+(fc.b>0?-12:20)}" text-anchor="middle" font-size="11" font-weight="700" fill="var(--bad)">도달 예상</text>`}
+  g+=`<circle cx="${x(n-1)}" cy="${y(last(h))}" r="5" fill="${stCol(s.st)}" stroke="var(--surface)" stroke-width="2"/>`;
+  g+=`<text x="${PL}" y="${H-6}" font-size="10.5" fill="var(--muted)">${Math.round(n*INTERVAL/S.speed/1000)}초 전</text><text x="${x(n-1)}" y="${H-6}" text-anchor="${fc?'middle':'end'}" font-size="10.5" fill="var(--muted)">현재</text>`;
+  if(fc)g+=`<text x="${W-PR}" y="${H-6}" text-anchor="end" font-size="10.5" fill="var(--accent)" font-weight="600">예측 →</text>`;
+  return g+'</svg>';
+}
+function renderDetail(){
+  const V=VAR(S.sel),s=S.vars[V.tag];$('detTitle').textContent=`${V.name} 추세 · ${V.tag}`;
+  const info=[['현재값',`<span class="num" style="color:${stCol(s.st)}">${fmt(last(s.h),V.dec)}</span> ${esc(V.unit)}`],
+    ['상태',`<span class="pill ${s.st==='bad'?'bad':s.st==='pre'?'pre':'ok'}">${STTXT[s.st]}</span>`],
+    ['설정값 SP',`<span class="num">${fmt(V.sp,V.dec)}</span> ${esc(V.unit)}`],['운전 범위',esc(rangeTxt(V))],
+    ['영향 품질',esc(V.q)],['담당 구역',esc(zoneOf(V))]];
+  $('detail').innerHTML=`<div class="chart">${bigChart(V,s)}</div><div class="dinfo">${info.map(([k,v])=>`<div><div class="k">${k}</div><div class="v">${v}</div></div>`).join('')}</div>`+
+    (s.st!=='ok'?`<p class="dreason" style="color:${stCol(s.st)}">${esc(s.reason)}</p>`:'')+
+    `<div class="legend"><span><i class="lg-l" style="border-color:var(--bad);border-top-style:dashed"></i>운전 한계 (DCS 알람값)</span><span><i class="lg-b"></i>예고 구간 (한계까지 남은 30%)</span><span><i class="lg-l" style="border-color:var(--accent);border-top-style:dashed"></i>추세 예측</span></div>`;
+}
+function renderKpis(){
+  const nOk=VARS.filter(V=>S.vars[V.tag].st==='ok').length,pend=S.recs.filter(r=>r.status==='pending'||r.status==='hold').length;
+  const actv=S.orders.filter(o=>o.status==='sent'||o.status==='ack'||o.status==='help').length,acked=S.orders.filter(o=>o.ackAt);
+  const avg=acked.length?Math.round(acked.reduce((a,o)=>a+(o.ackAt-o.sentAt),0)/acked.length/1000):null;
+  $('kpis').innerHTML=`<div><b style="color:${nOk===VARS.length?'var(--ok)':'var(--bad)'}">${nOk}/${VARS.length}</b><span>정상 변수</span></div>`+
+    `<div><b style="color:${pend?'var(--warn)':'inherit'}">${pend}</b><span>CCR 판단 대기 권고</span></div>`+
+    `<div><b>${actv}</b><span>현장 진행 중 지시</span></div><div><b>${avg==null?'–':avg+'초'}</b><span>평균 현장 응답</span></div>`;
+}
+const recLive=(V,s)=>`현재 <b class="num">${fmt(last(s.h),V.dec)}${esc(V.unit)}</b>${s.st==='ok'?' <span class="okback">지금은 정상 범위</span>':''}`;
+function renderRecs(){
+  D.recs=false;const list=S.recs.filter(r=>r.status==='pending'||r.status==='hold');
+  $('recCnt').textContent=list.length||'';
+  const ae=document.activeElement,aid=ae&&$('recs').contains(ae)?ae.id:null,ss=aid&&ae.selectionStart,se=aid&&ae.selectionEnd;
+  if(!list.length){$('recs').innerHTML='<div class="empty">대기 중인 권고가 없습니다.<br>이상 조짐이 보이면 여기에 조치안이 올라오고, CCR이 판단합니다.</div>';return}
+  $('recs').innerHTML=list.map(r=>{const V=VAR(r.tag),s=S.vars[r.tag],a=actOf(r.tag,r.dir);
+    return `<article class="rec sev-${r.safety?'safety':r.sev}${r.status==='hold'?' hold':''}">
+      <div class="rec-h"><span class="pill ${r.safety||r.sev==='bad'?'bad':'pre'}">${r.safety?'안전':r.sev==='bad'?'이탈':'예고'}</span>${r.esc?'<span class="pill bad">악화</span>':''}${r.status==='hold'?'<span class="pill">보류</span>':''}<b>${esc(V.name)}</b><span class="mono muted" style="font-size:.74rem">${V.tag}</span><span class="tm">${hms(r.at)}</span></div>
+      <div class="rec-r">${esc(r.reason)} · <span data-rv="${r.id}">${recLive(V,s)}</span></div>
+      <div class="rec-i">예상 영향: ${esc(a.impact)}</div>
+      ${r.safety?'<div class="rec-safe">안전 알람은 DCS 알람·SIS 인터록이 우선 처리합니다. 이 화면은 현장 전달 보조용이며, 현장 접근 여부는 CCR이 판단하세요.</div>':''}
+      <label class="lbl" for="rt-${r.id}">현장 지시 내용 (CCR이 고칠 수 있음)</label>
+      <textarea id="rt-${r.id}" data-rid="${r.id}" rows="2">${esc(r.draft.text)}</textarea>
+      <div class="rec-f"><label class="lbl-in">담당 <select id="rz-${r.id}" data-rid="${r.id}">${ZONES.map(z=>`<option${z===r.draft.zone?' selected':''}>${z}</option>`).join('')}</select></label>
+        <div class="seg" role="group" aria-label="우선순위">${['긴급','일반'].map(p=>`<button type="button" data-pri="${p}" data-rid="${r.id}" aria-pressed="${r.draft.pri===p}">${p}</button>`).join('')}</div></div>
+      <div class="rec-b"><button type="button" class="btn primary" data-send="${r.id}">승인 · 현장 지시 전송</button><button type="button" class="btn" data-hold="${r.id}">${r.status==='hold'?'보류 해제':'보류'}</button><button type="button" class="btn ghost" data-dismiss="${r.id}">오경보로 처리</button></div>
+    </article>`}).join('');
+  if(aid){const n=$(aid);if(n){n.focus();try{n.setSelectionRange(ss,se)}catch(e){}}}
+}
+function updateRecsLive(){$('recs').querySelectorAll('[data-rv]').forEach(sp=>{const r=S.recs.find(x=>x.id===+sp.dataset.rv);if(r)sp.innerHTML=recLive(VAR(r.tag),S.vars[r.tag])})}
+const ordPill=o=>o.status==='sent'?'st-new':o.status==='ack'?'st-ack':o.status==='help'?'warn':o.status==='done'?'ok':'';
+function ordDetail(o){const sec=t=>Math.round(t/1000);
+  if(o.status==='sent')return `응답 대기 ${sec(Date.now()-o.sentAt)}초`;
+  if(o.status==='ack')return `${esc(o.ackBy)} 출동 (응답 ${sec(o.ackAt-o.sentAt)}초)`;
+  if(o.status==='help')return `${esc(o.doneBy)}: 지원 요청${o.note?' — '+esc(o.note):''}`;
+  if(o.status==='done')return `${esc(o.doneBy)}: ${esc(o.result)}${o.note?' — '+esc(o.note):''}`;
+  return o.cancelled?'CCR 취소':esc(o.result||'');}
+function renderOrders(){
+  D.orders=false;const list=S.orders.slice(0,12);
+  if(!list.length){$('orders').innerHTML='<div class="empty">아직 보낸 지시가 없습니다.<br>권고를 검토하고 "승인 · 현장 지시 전송"을 누르면 담당 단말로 갑니다.</div>';return}
+  $('orders').innerHTML=`<div class="ords">${list.map(o=>`<div class="ord st-${o.status}" data-oid="${o.id}">
+    <div><div class="ord-t"><span class="pill ${o.pri==='긴급'?'bad':''}">${o.pri}</span> ${esc(o.title)}</div><div class="ord-s">${esc(o.zone)} 담당 · ${hms(o.sentAt)} · ${esc(o.by)}${o.esc?' · <b style="color:var(--bad)">악화 재알림</b>':''}</div></div>
+    <div class="ord-m"><span class="pill ${ordPill(o)}">${ORDST[o.status]}</span><span data-od>${ordDetail(o)}</span></div>
+    <div>${o.status==='closed'?'':`<button type="button" class="btn sm${o.status==='done'||o.status==='help'?' primary':''}" data-close="${o.id}">${o.status==='done'||o.status==='help'?'확인 · 종료':'지시 취소'}</button>`}</div></div>`).join('')}</div>`;
+  updateOrdersLive();
+}
+function updateOrdersLive(){$('orders').querySelectorAll('[data-oid]').forEach(row=>{const o=S.orders.find(x=>x.id===+row.dataset.oid);if(!o)return;
+  if(o.status==='sent'){row.querySelector('[data-od]').textContent=`응답 대기 ${Math.round((Date.now()-o.sentAt)/1000)}초`;row.classList.toggle('overdue',Date.now()-o.sentAt>OVERDUE)}else row.classList.remove('overdue')})}
+function renderLog(){D.log=false;$('log').innerHTML=S.log.slice(0,60).map(l=>`<li><span class="tm">${hms(l.t)}</span><span class="k ${l.kind}">${LOGK[l.kind]||l.kind}</span><span>${esc(l.text)}</span></li>`).join('')||'<li class="empty">이력이 없습니다</li>'}
+function renderHeader(){
+  const devs=Object.values(S.devices).filter(d=>Date.now()-d.at<25000&&!d.embedded).length;let cls,txt;
+  if(Bus.mode==='server'){cls=Bus.ok?'on':'err';txt=Bus.ok?`서버 연동 · 현장 단말 ${devs}대 접속 중`:'서버 응답 없음'}
+  else{cls='local';txt='로컬 데모 (휴대폰 연결은 서버로 열어야 함)'}
+  $('conn').className='conn '+cls;$('conn').lastElementChild.textContent=txt;
+  $('ccrSnd').textContent=S.snd?'CCR 알림음 켬':'CCR 알림음 끔';$('ccrSnd').setAttribute('aria-pressed',String(S.snd));
+}
+function buildSim(){$('faults').innerHTML=Object.entries(FAULTS).map(([k,F])=>`<button type="button" data-fault="${k}"${k==='o2'?' class="safety"':''}><b>${esc(F.label)}</b><span>${esc(F.desc)}</span></button>`).join('')}
+function renderSim(){
+  $('faults').querySelectorAll('[data-fault]').forEach(b=>b.disabled=S.faults.some(f=>f.key===b.dataset.fault));
+  $('simStat').textContent=S.faults.length?'진행 중: '+S.faults.map(f=>FAULTS[f.key].label+(f.rec?' (회복 중)':'')).join(', '):'진행 중인 이상 상황 없음';
+  $('runBtn').textContent=S.running?'일시정지':'재개';
+  document.querySelectorAll('[data-speed]').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.speed===S.speed)));
+}
+function renderCCR(){
+  renderHeader();renderKpis();updateFlow();renderDetail();
+  if(D.recs)renderRecs();else updateRecsLive();
+  if(D.orders)renderOrders();else updateOrdersLive();
+  if(D.log)renderLog();
+}
+function renderNow(){renderKpis();updateFlow();if(D.recs)renderRecs();if(D.orders)renderOrders();if(D.log)renderLog()}
+function drawQR(url){
+  const box=$('qr');if(!box)return;
+  if(typeof qrcode!=='function'){window.addEventListener('load',()=>{if(typeof qrcode==='function')drawQR(url)},{once:true});return}
+  try{const q=qrcode(0,'M');q.addData(url);q.make();box.innerHTML=q.createSvgTag({cellSize:4,margin:2,scalable:true})}catch(e){box.textContent=''}
+}
+function renderConnect(){
+  const c=$('connect');
+  if(Bus.mode==='server'&&Bus.info){
+    const urls=(Bus.info.ips||[]).map(ip=>`http://${ip}${Bus.info.port==80?'':':'+Bus.info.port}/w`);
+    c.innerHTML=`<b>현장 단말 연결</b><span class="note">같은 Wi-Fi의 휴대폰·전용 단말에서 QR을 찍거나 아래 주소로 접속하세요.</span>${urls.length?'<div class="qr" id="qr"></div>':''}${urls.map(u=>`<span class="url">${esc(u)}</span>`).join('')}<a class="btn sm" href="?role=worker" target="_blank" rel="noopener">이 PC에서 작업자 화면 새 탭으로 열기</a>`;
+    if(urls.length)drawQR(urls[0]);
+  }else{
+    c.innerHTML=`<b>현장 단말 연결</b><span class="note">지금은 서버 없이(파일·온라인 버전) 열려 있어 이 화면 안의 미리보기 단말만 연결됩니다. 실제 휴대폰을 연결하려면 이 폴더에서 serve.ps1로 서버를 띄우고 <span class="mono">http://localhost/c</span>로 여세요. 휴대폰용 주소와 QR이 여기에 표시됩니다.</span>`;
+  }
+}
+function bindCCR(){
+  const root=$('ccr');
+  root.addEventListener('click',e=>{
+    const t=e.target;if(t.closest('#embedPhone'))return;let b,r;
+    if(b=t.closest('.vrow')){S.sel=b.dataset.tag;updateFlow();renderDetail();return}
+    if(b=t.closest('[data-send]')){r=S.recs.find(x=>x.id===+b.dataset.send);if(r&&(r.status==='pending'||r.status==='hold'))dispatch(r)}
+    else if(b=t.closest('[data-hold]')){r=S.recs.find(x=>x.id===+b.dataset.hold);if(r){r.status=r.status==='hold'?'pending':'hold';D.recs=true;logE('ccr',`${S.op}: ${VAR(r.tag).name} 권고 ${r.status==='hold'?'보류':'보류 해제'}`)}}
+    else if(b=t.closest('[data-dismiss]')){r=S.recs.find(x=>x.id===+b.dataset.dismiss);if(r){r.status='dismissed';S.vars[r.tag].supp=RANK[r.sev];D.recs=true;logE('ccr',`${S.op}: ${VAR(r.tag).name} 권고를 오경보로 처리 (현장 지시 안 함)`)}}
+    else if(b=t.closest('[data-pri]')){r=S.recs.find(x=>x.id===+b.dataset.rid);if(r){r.draft.pri=b.dataset.pri;D.recs=true}}
+    else if(b=t.closest('[data-close]')){const o=S.orders.find(x=>x.id===+b.dataset.close);if(o&&o.status!=='closed')closeOrder(o)}
+    else if(b=t.closest('[data-fault]')){inject(b.dataset.fault)}
+    else if(b=t.closest('[data-speed]')){S.speed=+b.dataset.speed;schedule();renderSim()}
+    else if(t.closest('#runBtn')){S.running=!S.running;schedule();renderSim()}
+    else if(t.closest('#resetBtn')){initCCR();return}
+    else if(t.closest('#ccrSnd')){S.snd=!S.snd;renderHeader()}
+    else return;
+    renderNow();
+  });
+  root.addEventListener('input',e=>{const t=e.target;
+    if(t.matches('textarea[data-rid]')){const r=S.recs.find(x=>x.id===+t.dataset.rid);if(r)r.draft.text=t.value}
+    if(t.id==='opName'){S.op=t.value.trim()||'CCR 운전원';store.set('proc.op',S.op)}});
+  root.addEventListener('change',e=>{const t=e.target;
+    if(t.matches('select[data-rid]')){const r=S.recs.find(x=>x.id===+t.dataset.rid);if(r)r.draft.zone=t.value}
+    if(t.id==='autoInj')S.auto=t.checked});
+  $('opName').value=S.op;
+}
+
+/* ===================== 현장 작업자 단말 ===================== */
+function createWorker(host,embedded){
+  const W={zone:embedded?'전체':store.get('proc.zone','전체'),name:embedded?'데모 단말':store.get('proc.name',''),muted:false,tab:'orders',
+    orders:new Map(),vals:{},lastAlert:{},started:embedded,ready:false,lastState:0,sel:null,res:'조치 완료',dev:DEVICE+(embedded?'-demo':''),ovKey:null,ovKind:null};
+  if(!ZONES.includes(W.zone))W.zone='전체';
+  const zoneBtns=(attr)=>['전체',...ZONES].map(z=>`<button type="button" ${attr}="${z}" aria-pressed="${z===W.zone}">${z}</button>`).join('');
+  host.innerHTML=`<div class="w-app">
+    <div class="w-top"><div class="w-ttl"><b>현장 작업 지시</b><span class="w-sub" data-r="sub"></span></div><button type="button" class="w-snd" data-act="snd" data-r="snd"></button></div>
+    <div class="w-zones" data-r="zones" role="group" aria-label="담당 구역"></div>
+    <div class="w-conn" data-r="conn"></div>
+    <div class="w-body" data-r="body"></div>
+    <nav class="w-nav" aria-label="단말 메뉴"><button type="button" data-tab="orders">작업 지시<span class="w-badge" data-r="badge" hidden></span></button><button type="button" data-tab="vars">공정 변수</button></nav>
+    <div class="w-ov" data-r="ov" role="alertdialog" aria-live="assertive" hidden></div>
+    <div class="w-scrim" data-r="scrim" hidden></div>
+    <div class="w-sheet" data-r="sheet" role="dialog" aria-modal="true" hidden></div>
+    ${embedded?'':`<div class="w-start" data-r="start"><div class="w-start-in">
+      <div class="eyebrow">현장 작업자 단말</div><h2>알림 받기 설정</h2>
+      <span class="note">담당 구역을 고르면 그 구역 지시만 받습니다.</span>
+      <div class="w-zsel" role="group" aria-label="담당 구역">${zoneBtns('data-sz')}</div>
+      <label class="note" for="wName">이름 (CCR에 표시)</label><input id="wName" data-r="nm" placeholder="예: 소성 1조" value="${esc(W.name)}" autocomplete="off">
+      <button type="button" class="w-btn primary big" data-start>알림 받기 시작</button>
+      <span class="note">버튼을 눌러야 소리·진동이 켜집니다 (브라우저 정책). 테스트음이 한 번 울립니다. 알림은 화면이 켜져 있을 때 받습니다. iPhone은 웹에서 진동을 지원하지 않아 소리·화면으로만 알립니다.</span>
+    </div></div>`}
+  </div>`;
+  const R=k=>host.querySelector(`[data-r="${k}"]`);
+  const keyOf=o=>o.sid+':'+o.id;
+  const mine=o=>W.zone==='전체'||o.zone===W.zone;
+  const who=()=>W.name||(W.zone==='전체'?'현장 작업자':W.zone+' 담당');
+
+  function renderConn(){
+    const c=R('conn');let cls='',txt;const fresh=Date.now()-W.lastState<6000;
+    if(Bus.mode==='server'){txt=fresh?'CCR과 실시간 연결됨':'CCR 신호 대기 중 (PC에서 CCR 화면이 열려 있는지 확인)';cls=fresh?'':'warn';if(!Bus.ok){cls='bad';txt='서버 연결 끊김 — 같은 Wi-Fi인지 확인하세요'}}
+    else{txt=embedded?'데모 단말 · 왼쪽 CCR 화면과 연결됨':'로컬 연결 (같은 브라우저 안에서만)';cls=fresh?'':'warn'}
+    c.className='w-conn '+cls;c.innerHTML=`<i></i><span>${esc(txt)}</span>`;
+  }
+  function card(o){
+    const V=VAR(o.tag),cv=W.vals[o.tag],k=keyOf(o),urgent=o.pri==='긴급';
+    const stTxt={sent:'새 지시',ack:'조치 중',help:'지원 요청함',done:'완료 보고함',closed:o.cancelled?'CCR 취소':'종료'}[o.status];
+    const stCls={sent:'st-new',ack:'st-ack',help:'warn',done:'st-done',closed:''}[o.status];
+    let btn='';
+    if(o.status==='sent')btn=`<button type="button" class="w-btn ${urgent?'urgent':'primary'} big" data-ack="${esc(k)}">확인 · 출동</button>`;
+    else if(o.status==='ack')btn=`<button type="button" class="w-btn primary" data-report="${esc(k)}">완료 보고</button>`;
+    else if(o.result)btn=`<div class="oc-i">보고: ${esc(o.result)}${o.note?' — '+esc(o.note):''}</div>`;
+    return `<article class="oc st-${o.status}${urgent?' urgent':''}">
+      <div class="oc-h"><span class="pill ${urgent?'bad':'pre'}">${o.pri}</span><span class="pill ${stCls}">${stTxt}</span>${o.esc?'<span class="pill bad">악화</span>':''}<span class="tm">${hms(o.sentAt)}</span></div>
+      <div class="oc-t">${esc(o.title)}</div>
+      <div class="oc-v"><span class="mono">${o.tag}</span> · 현재 <b data-val="${o.tag}" class="st-${cv?cv.st:'ok'}">${cv?fmt(cv.v,V.dec):'–'}</b> ${esc(V.unit)} · 운전범위 ${rangeTxt(V)}</div>
+      ${o.safety?'<div class="oc-safe">안전 구역: CCR 지시와 안전 절차를 먼저 따르세요</div>':''}
+      <div class="oc-a">${esc(o.act)}</div>
+      <div class="oc-i">예상 영향: ${esc(o.impact)} · 지시: ${esc(o.by)}</div>
+      ${btn}
+    </article>`;
+  }
+  function ordersHTML(){
+    const all=[...W.orders.values()].filter(mine);
+    const act=all.filter(o=>o.status==='sent'||o.status==='ack'||o.status==='help')
+      .sort((a,b)=>(a.status==='sent'?0:1)-(b.status==='sent'?0:1)||(a.pri==='긴급'?0:1)-(b.pri==='긴급'?0:1)||b.sentAt-a.sentAt);
+    const old=all.filter(o=>o.status==='done'||o.status==='closed').sort((a,b)=>(b.doneAt||b.closedAt||0)-(a.doneAt||a.closedAt||0)).slice(0,5);
+    let h=act.length?act.map(card).join(''):`<div class="w-empty"><b>대기 중인 작업 지시가 없습니다</b><span>CCR이 지시를 보내면 소리·진동으로 알려 드립니다.</span></div>`;
+    if(old.length)h+=`<div class="w-sec">최근 처리</div>`+old.map(card).join('');
+    return h;
+  }
+  function varsHTML(){
+    const steps=STEPS.filter(st=>W.zone==='전체'||st.zone===W.zone);
+    return `<div class="w-note">확인용 화면입니다. 설정 변경·운전 조작은 CCR(DCS)에서 합니다.</div>`+steps.map(st=>`<div class="w-vg"><h4><span>${st.n}. ${st.name}</span><span class="muted">${st.zone}</span></h4>${VARS.filter(V=>V.step===st.id).map(V=>{const cv=W.vals[V.tag],sc='st-'+(cv?cv.st:'ok');
+      return `<div class="w-vr ${sc}" data-vr="${V.tag}"><span class="dot ${sc}"></span><span class="nm">${esc(V.name)}<span class="tg">${V.tag} · 범위 ${rangeTxt(V)}</span></span><span class="vl" data-vv>${cv?fmt(cv.v,V.dec):'–'}</span><span class="muted" style="font-size:.72rem">${esc(V.unit)}</span></div>`}).join('')}</div>`).join('');
+  }
+  function render(){
+    R('sub').textContent=`${W.zone==='전체'?'전체 구역':W.zone} · ${who()}`;
+    const snd=R('snd');snd.textContent=W.muted?'무음 (진동만)':'소리 켬';snd.classList.toggle('off',W.muted);snd.setAttribute('aria-pressed',String(!W.muted));
+    R('zones').innerHTML=zoneBtns('data-z').replace(/<button /g,'<button class="w-z" ');
+    host.querySelectorAll('.w-nav [data-tab]').forEach(b=>b.dataset.tab===W.tab?b.setAttribute('aria-current','page'):b.removeAttribute('aria-current'));
+    const pend=[...W.orders.values()].filter(o=>mine(o)&&o.status==='sent').length;
+    R('badge').hidden=!pend;R('badge').textContent=pend;
+    if(!embedded)document.title=pend?`(${pend}) 현장 작업 지시`:'현장 작업 지시';
+    R('body').innerHTML=W.tab==='orders'?ordersHTML():varsHTML();
+    renderConn();
+  }
+  function updateVals(){
+    host.querySelectorAll('[data-val]').forEach(b=>{const cv=W.vals[b.dataset.val];if(!cv)return;b.textContent=fmt(cv.v,VAR(b.dataset.val).dec);b.className='st-'+cv.st});
+    host.querySelectorAll('[data-vr]').forEach(row=>{const cv=W.vals[row.dataset.vr];if(!cv)return;row.className='w-vr st-'+cv.st;row.querySelector('.dot').className='dot st-'+cv.st;row.querySelector('[data-vv]').textContent=fmt(cv.v,VAR(row.dataset.vr).dec)});
+  }
+  function showOv(o,kind){
+    const V=VAR(o.tag),cv=W.vals[o.tag],urgent=o.pri==='긴급';W.ovKey=keyOf(o);W.ovKind=kind;
+    const head={new:'새 작업 지시',repeat:'미확인 지시 · 다시 알림',esc:'상황 악화 · 다시 알림'}[kind];
+    const ov=R('ov');ov.className='w-ov '+(urgent?'urgent':'normal');
+    ov.innerHTML=`<div class="w-ov-k">${head} · ${o.pri}</div><div class="w-ov-t">${esc(o.title)}</div>
+      <div class="w-ov-v">${esc(o.zone)} · <span class="mono">${o.tag}</span> 현재 ${cv?fmt(cv.v,V.dec):'–'} ${esc(V.unit)}</div>
+      <div class="w-ov-a">${esc(o.act)}</div>
+      ${o.status==='sent'?`<button type="button" class="w-btn ${urgent?'urgent':'primary'} big" data-ovack>확인 · 출동</button><button type="button" class="w-btn" data-ovclose>나중에 보기</button>`:`<button type="button" class="w-btn primary big" data-ovclose>확인</button>`}`;
+    ov.hidden=false;
+  }
+  function hideOv(){R('ov').hidden=true;W.ovKey=null}
+  function notify(o,kind){
+    W.lastAlert[keyOf(o)]=Date.now();
+    if(!W.muted)play(o.pri==='긴급'?'urgent':'normal');
+    vibrate(o.pri==='긴급'?[500,150,500,150,500]:[250,120,250]);
+    showOv(o,kind);
+  }
+  function ack(k){const o=W.orders.get(k);if(!o||o.status!=='sent')return;o.status='ack';o._acked=true;
+    Bus.send('ack',{sid:o.sid,oid:o.id,by:who(),device:W.dev});hideOv();render()}
+  function openReport(k){const o=W.orders.get(k);if(!o)return;W.sel=k;W.res='조치 완료';
+    const opts=[['조치 완료','지시대로 조치했고 정상 회복을 확인함'],['이상 없음','현장 확인 결과 설비 이상 없음'],['지원 필요','혼자 처리하기 어려움 — CCR 지원 요청']];
+    R('sheet').innerHTML=`<div class="grab"></div><h3>완료 보고</h3><div class="muted" style="font-size:.84rem">${esc(o.title)}</div>
+      <div class="w-res" role="group" aria-label="조치 결과">${opts.map(([v,d])=>`<button type="button" data-res="${v}" aria-pressed="${v===W.res}"><b>${v}</b><span>${d}</span></button>`).join('')}</div>
+      <label class="note" for="wNote">조치 내용 (선택)</label><textarea id="wNote" data-r="note" placeholder="예: 2존 히터 퓨즈 교체, 온도 회복 확인"></textarea>
+      <button type="button" class="w-btn primary big" data-sendrep>보고 전송</button><button type="button" class="w-btn" data-cancel>취소</button>`;
+    R('sheet').hidden=false;R('scrim').hidden=false}
+  function closeSheet(){R('sheet').hidden=true;R('scrim').hidden=true;W.sel=null}
+  function sendReport(){const o=W.orders.get(W.sel);if(!o)return closeSheet();const note=(R('note').value||'').trim();
+    Bus.send('done',{sid:o.sid,oid:o.id,by:who(),result:W.res,note,device:W.dev});
+    o.status=W.res==='지원 필요'?'help':'done';o.result=W.res;o.note=note;o.doneAt=Date.now();closeSheet();render()}
+  function hb(){if(W.started)Bus.send('hb',{device:W.dev,zone:W.zone,name:who(),embedded})}
+  function start(){
+    W.name=(R('nm').value||'').trim();store.set('proc.name',W.name);store.set('proc.zone',W.zone);
+    unlockAudio();vibrate(80);setTimeout(()=>play('normal'),200);
+    try{if('wakeLock' in navigator){const req=()=>navigator.wakeLock.request('screen').catch(()=>{});req();document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')req()})}}catch(e){}
+    W.started=true;R('start').hidden=true;render();hb();
+    const p=[...W.orders.values()].filter(o=>mine(o)&&o.status==='sent');if(p.length)setTimeout(()=>notify(p[0],'repeat'),600);
+  }
+
+  Bus.on(m=>{
+    if(m.type==='state'){W.lastState=Date.now();((m.s&&m.s.vars)||[]).forEach(x=>W.vals[x.tag]={v:x.v,st:x.st});updateVals();renderConn();return}
+    if(m.type==='reset'){W.orders.clear();W.lastAlert={};hideOv();closeSheet();render();return}
+    if(m.type!=='order'||!m.order)return;
+    const o=Object.assign({},m.order),k=keyOf(o),prev=W.orders.get(k);
+    if(prev&&prev._acked&&o.status==='sent')o.status='ack';
+    o._acked=prev?prev._acked:false;
+    W.orders.set(k,o);
+    if(mine(o)&&W.ready&&W.started){
+      if(!prev&&o.status==='sent')notify(o,'new');
+      else if(prev&&o.esc>(prev.esc||0)&&(o.status==='sent'||o.status==='ack'))notify(o,'esc');
+    }
+    if(W.ovKey===k&&(o.status==='closed'||(o.status!=='sent'&&W.ovKind!=='esc')))hideOv();
+    if(W.sel===k&&o.status==='closed')closeSheet();
+    render();
+  });
+  Bus.ready(()=>{W.ready=true;render();hb()});
+  setInterval(()=>{ // 미확인 지시 재알림: 긴급 12초, 일반 30초 간격
+    if(!W.ready||!W.started)return;const now=Date.now();
+    for(const o of W.orders.values()){if(o.status!=='sent'||!mine(o))continue;
+      if(now-(W.lastAlert[keyOf(o)]||0)>(o.pri==='긴급'?12000:30000)){notify(o,'repeat');break}}
+  },1000);
+  setInterval(hb,10000);
+  setInterval(renderConn,2000);
+
+  host.addEventListener('click',e=>{const t=e.target;let b;
+    if(b=t.closest('[data-z]')){W.zone=b.dataset.z;if(!embedded)store.set('proc.zone',W.zone);render();hb();return}
+    if(b=t.closest('[data-sz]')){W.zone=b.dataset.sz;host.querySelectorAll('[data-sz]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));return}
+    if(t.closest('[data-start]'))return start();
+    if(b=t.closest('[data-tab]')){W.tab=b.dataset.tab;render();R('body').scrollTop=0;return}
+    if(t.closest('[data-act="snd"]')){W.muted=!W.muted;unlockAudio();render();return}
+    if(b=t.closest('[data-ack]'))return ack(b.dataset.ack);
+    if(b=t.closest('[data-report]'))return openReport(b.dataset.report);
+    if(t.closest('[data-ovack]'))return ack(W.ovKey);
+    if(t.closest('[data-ovclose]'))return hideOv();
+    if(b=t.closest('[data-res]')){W.res=b.dataset.res;R('sheet').querySelectorAll('[data-res]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));return}
+    if(t.closest('[data-sendrep]'))return sendReport();
+    if(t.closest('[data-cancel]')||t.closest('[data-r="scrim"]'))return closeSheet();
+  });
+  render();
+  return W;
+}
+
+/* ===================== 시작 ===================== */
+let WK=null;
+if(ROLE==='worker'){
+  document.title='현장 작업 지시';
+  const root=$('wroot');root.hidden=false;root.innerHTML='<div class="phone" id="wphone"></div>';
+  WK=createWorker($('wphone'),false);
+  Bus.start();
+}else{
+  $('ccr').hidden=false;
+  buildFlow();buildSim();bindCCR();
+  Bus.on(onCcrMsg);
+  WK=createWorker($('embedPhone'),true);
+  Bus.start();
+  Bus.ready(()=>{initCCR();renderConnect()});
+  setInterval(renderHeader,2000);
+}
+window.__proc={S,PRED,W:()=>WK,tick,inject,dispatch,closeOrder,initCCR,Bus,pause:()=>{S.running=false;schedule()}};
+})();
+</script>
+</body>
+</html>

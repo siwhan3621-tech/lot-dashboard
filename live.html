@@ -1,0 +1,597 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#4b46c8">
+<title>LOT 실시간 알림</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* 실시간 시뮬레이션 + 모바일 알림 데모.
+   데스크톱: 가운데 휴대폰 화면 + 오른쪽 시뮬레이터 패널 (발표용)
+   휴대폰: 앱 화면이 전체를 채우고 시뮬레이터는 상단 '데모' 버튼으로 열림 */
+:root{
+  --bg:#e9ebf1; --surface:#ffffff; --surface-2:#f0f1f6; --line:#d8dbe5;
+  --fg:#171a24; --muted:#5d6273; --accent:#4b46c8; --accent-soft:#e7e6fb;
+  --ok:#1f8a5b; --ok-soft:#e2f3ea; --warn:#b26a00; --warn-soft:#fbefd9; --bad:#c8333b; --bad-soft:#fbe4e5;
+  --spec:#8a8fa0; --zone:rgba(75,70,200,.06); --shadow:0 20px 50px rgba(20,22,40,.18);
+  --f-body:"IBM Plex Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0d0f15; --surface:#1a1d27; --surface-2:#232735; --line:#323748;
+  --fg:#e8eaf2; --muted:#9aa0b4; --accent:#9d99ff; --accent-soft:#2a2a4d;
+  --ok:#4cc58c; --ok-soft:#173326; --warn:#f0a73a; --warn-soft:#3a2c12; --bad:#ff6b72; --bad-soft:#3d1c20;
+  --spec:#7c8296; --zone:rgba(157,153,255,.08); --shadow:0 20px 50px rgba(0,0,0,.5); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0d0f15; --surface:#1a1d27; --surface-2:#232735; --line:#323748;
+  --fg:#e8eaf2; --muted:#9aa0b4; --accent:#9d99ff; --accent-soft:#2a2a4d;
+  --ok:#4cc58c; --ok-soft:#173326; --warn:#f0a73a; --warn-soft:#3a2c12; --bad:#ff6b72; --bad-soft:#3d1c20;
+  --spec:#7c8296; --zone:rgba(157,153,255,.08); --shadow:0 20px 50px rgba(0,0,0,.5); color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:14px;line-height:1.5}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono,.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+
+.stage{min-height:100vh;display:flex;justify-content:center;align-items:center;gap:28px;padding:24px 16px}
+.phone{position:relative;width:390px;height:min(820px,calc(100vh - 48px));background:var(--bg);border:1px solid var(--line);border-radius:30px;overflow:hidden;display:flex;flex-direction:column;box-shadow:var(--shadow)}
+
+/* 앱바 */
+.appbar{background:var(--surface);border-bottom:1px solid var(--line);padding:calc(12px + env(safe-area-inset-top,0px)) 16px 10px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.appbar .ttl{flex:1;min-width:0}
+.appbar h1{margin:0;font-size:1.02rem;font-weight:700;letter-spacing:-.01em}
+.live{display:inline-flex;align-items:center;gap:6px;font-size:.74rem;color:var(--muted)}
+.live i{width:7px;height:7px;border-radius:50%;background:var(--ok)}
+.live.on i{animation:pulse 1.6s infinite}
+.live.off i{background:var(--muted)}
+@keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 60%,transparent)}70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
+@media (prefers-reduced-motion:reduce){.live.on i{animation:none}}
+.iconbtn{border:1px solid var(--line);background:var(--surface);border-radius:9px;padding:6px 10px;font-size:.8rem;font-weight:600}
+.demo-btn{display:none}
+
+/* 본문 */
+.views{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:14px 16px 20px}
+.view{display:none;flex-direction:column;gap:14px}
+.view.on{display:flex}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px}
+.sec-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:2px 2px -4px}
+.sec-h h2{margin:0;font-size:.9rem;font-weight:600}
+.link{background:none;border:0;color:var(--accent);font-size:.8rem;font-weight:600;padding:0}
+
+.hero{display:flex;align-items:center;gap:12px;border-radius:14px;padding:14px;border:1px solid transparent}
+.hero .big{font-size:1.15rem;font-weight:700}
+.hero .ic{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-size:1.2rem;font-weight:700;flex-shrink:0;color:var(--surface)}
+.hero.ok{background:var(--ok-soft)} .hero.ok .ic{background:var(--ok)} .hero.ok .big{color:var(--ok)}
+.hero.warn{background:var(--warn-soft)} .hero.warn .ic{background:var(--warn)} .hero.warn .big{color:var(--warn)}
+.hero.bad{background:var(--bad-soft)} .hero.bad .ic{background:var(--bad)} .hero.bad .big{color:var(--bad)}
+.hero .go{margin-left:auto;white-space:nowrap;flex-shrink:0;border:0;border-radius:9px;padding:8px 12px;font-weight:600;font-size:.8rem;background:var(--surface);color:var(--fg)}
+
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.kpis div{background:var(--surface);padding:9px 6px;text-align:center}
+.kpis b{display:block;font-family:var(--f-mono);font-size:1.15rem;font-weight:600}
+.kpis span{font-size:.7rem;color:var(--muted)}
+
+.items{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.item{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 11px;text-align:left;display:flex;flex-direction:column;gap:2px;min-width:0}
+.item .nm{font-size:.76rem;color:var(--muted);display:flex;align-items:center;gap:6px}
+.item .val{font-family:var(--f-mono);font-size:1.05rem;font-weight:600}
+.item .val small{font-size:.7rem;color:var(--muted);font-weight:400;margin-left:2px}
+.item svg{width:100%;height:28px;display:block;margin-top:4px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ok);display:inline-block;flex-shrink:0}
+.dot.warn{background:var(--warn)} .dot.bad{background:var(--bad)}
+
+.list{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.row{display:flex;align-items:center;gap:10px;padding:10px 12px;border:0;border-bottom:1px solid var(--line);background:none;text-align:left;width:100%}
+.row:last-child{border-bottom:0}
+.row .main{flex:1;min-width:0}
+.row .t1{font-weight:600;font-size:.86rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .t2{font-size:.76rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row.new{background:color-mix(in srgb,var(--accent-soft) 45%,transparent)}
+.row .tm{font-size:.72rem;color:var(--muted);font-family:var(--f-mono);white-space:nowrap}
+.empty{padding:22px 12px;text-align:center;color:var(--muted);font-size:.84rem}
+
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:.7rem;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.pill.bad{background:var(--bad-soft);color:var(--bad)} .pill.warn{background:var(--warn-soft);color:var(--warn)} .pill.ok{background:var(--ok-soft);color:var(--ok)}
+.pill.st-new{background:var(--accent);color:var(--surface)} .pill.st-ack{background:var(--surface-2);color:var(--fg)} .pill.st-done{background:var(--ok-soft);color:var(--ok)}
+
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:none;padding:6px 12px;font-size:.8rem;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:none}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-size:.8rem;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.chip[aria-selected="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+.chart svg{width:100%;height:auto;display:block}
+.ptinfo{font-size:.8rem;min-height:2.6em;padding:8px 10px;border-radius:9px;background:var(--surface-2);margin-top:8px}
+.lims{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:10px}
+.lims div{background:var(--surface-2);border-radius:8px;padding:6px 8px}
+.lims .k{font-size:.68rem;color:var(--muted)} .lims .v{font-family:var(--f-mono);font-weight:600;font-size:.84rem}
+
+/* 하단 탭 */
+.bnav{display:grid;grid-template-columns:repeat(4,1fr);background:var(--surface);border-top:1px solid var(--line);padding:4px 4px calc(4px + env(safe-area-inset-bottom,0px));flex-shrink:0}
+.bnav button{border:0;background:none;padding:6px 0 4px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:.7rem;color:var(--muted);position:relative}
+.bnav svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.bnav button[aria-current="page"]{color:var(--accent);font-weight:600}
+.badge{position:absolute;top:2px;left:calc(50% + 6px);min-width:17px;height:17px;padding:0 5px;border-radius:999px;background:var(--bad);color:#fff;font-size:.66rem;font-weight:700;display:grid;place-items:center;font-family:var(--f-mono)}
+.badge[hidden]{display:none}
+
+/* 알림 토스트 */
+.toast{position:absolute;left:10px;right:10px;top:calc(62px + env(safe-area-inset-top,0px));z-index:5;background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--warn);border-radius:12px;padding:10px 12px;box-shadow:var(--shadow);display:flex;gap:10px;align-items:flex-start;text-align:left;transform:translateY(-140%);opacity:0;transition:transform .25s,opacity .25s;width:auto}
+.toast.bad{border-left-color:var(--bad)}
+.toast.show{transform:none;opacity:1}
+.toast .tt{font-weight:700;font-size:.86rem}
+.toast .td{font-size:.78rem;color:var(--muted);display:-webkit-box!important;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+
+/* 바텀 시트 */
+.scrim{position:absolute;inset:0;background:rgba(10,12,20,.45);z-index:8;opacity:0;pointer-events:none;transition:opacity .2s}
+.scrim.on{opacity:1;pointer-events:auto}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:9;background:var(--surface);border-radius:18px 18px 0 0;max-height:88%;overflow-y:auto;padding:8px 16px calc(18px + env(safe-area-inset-bottom,0px));transform:translateY(105%);transition:transform .25s}
+.sheet.on{transform:none}
+.grab{width:40px;height:4px;border-radius:9px;background:var(--line);margin:4px auto 10px}
+.sheet h3{margin:0 0 4px;font-size:1.05rem}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:.84rem;margin:10px 0}
+.kv dt{color:var(--muted)} .kv dd{margin:0}
+.hint{background:var(--surface-2);border-radius:10px;padding:10px 12px;font-size:.82rem;margin:10px 0}
+.hint b{display:block;font-size:.74rem;color:var(--muted);font-weight:600;margin-bottom:2px}
+.form{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.form label{font-size:.76rem;color:var(--muted);font-weight:600}
+.form select,.form input,.form textarea{width:100%;padding:9px 10px;border-radius:9px;border:1px solid var(--line);background:var(--surface-2)}
+.form textarea{min-height:70px;resize:vertical}
+.btns{display:flex;gap:8px;margin-top:6px}
+.btn{flex:1;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:11px;font-weight:600;font-size:.86rem}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.log{border-left:2px solid var(--line);padding-left:10px;margin:10px 0 0;display:flex;flex-direction:column;gap:6px;font-size:.8rem}
+.vals{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.vals div{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;border-radius:9px;background:var(--surface-2);font-size:.84rem}
+
+/* 시뮬레이터 패널 */
+.sim{width:300px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:14px;align-self:center}
+.sim h2{margin:0;font-size:.95rem}
+.sim .eyebrow{font-size:.7rem;letter-spacing:.08em;color:var(--muted);font-weight:600}
+.sim .grp{display:flex;flex-direction:column;gap:6px}
+.sim .inj{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.sim .inj button{border:1px solid var(--line);background:var(--surface-2);border-radius:9px;padding:8px;font-size:.78rem;text-align:left}
+.sim .inj button b{display:block;font-size:.8rem}
+.sim .inj button span{color:var(--muted);font-size:.72rem}
+.sim .inj button:disabled{opacity:.5;cursor:default}
+.sim .inj button.wide{grid-column:1 / -1}
+.pill.pre{background:var(--accent-soft);color:var(--accent)}
+.dot.pre{background:var(--accent)}
+.lead{display:flex;gap:8px;align-items:flex-start;background:var(--accent-soft);color:var(--fg);border-radius:10px;padding:10px 12px;font-size:.82rem;margin:10px 0}
+.lead b{color:var(--accent)}
+.leadbar{font-size:.78rem;color:var(--muted);margin-top:-6px;padding:0 2px}
+.leadbar b{color:var(--accent)}
+.sim .tog{display:flex;align-items:center;justify-content:space-between;font-size:.84rem}
+.sim .note{font-size:.74rem;color:var(--muted)}
+.sim .close{display:none}
+.sim .runbtn{border:1px solid var(--accent);background:var(--accent);color:var(--surface);border-radius:9px;padding:8px;font-weight:600}
+.sim .runbtn.paused{background:var(--surface);color:var(--accent)}
+
+@media (max-width:760px){
+  .stage{padding:0;display:block}
+  .phone{width:100%;height:100dvh;border:0;border-radius:0;box-shadow:none}
+  .demo-btn{display:inline-block}
+  .sim{position:fixed;left:0;right:0;bottom:0;width:auto;z-index:20;border-radius:18px 18px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));transform:translateY(105%);transition:transform .25s;box-shadow:var(--shadow);max-height:80vh;overflow-y:auto}
+  .sim.open{transform:none}
+  .sim .close{display:inline-block}
+}
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="phone" id="phone">
+    <header class="appbar">
+      <div class="ttl">
+        <h1>LOT 품질 알림</h1>
+        <span class="live on" id="live"><i></i><span id="liveTxt">실시간 수신 중</span></span>
+      </div>
+      <button class="iconbtn demo-btn" type="button" id="demoBtn">데모</button>
+    </header>
+
+    <button class="toast" type="button" id="toast" aria-live="assertive"></button>
+
+    <main class="views">
+      <section class="view on" id="v-home" aria-label="현황"></section>
+      <section class="view" id="v-alerts" aria-label="알림"></section>
+      <section class="view" id="v-chart" aria-label="관리도"></section>
+      <section class="view" id="v-hist" aria-label="조치 이력"></section>
+    </main>
+
+    <nav class="bnav" aria-label="메뉴">
+      <button type="button" data-v="home" aria-current="page"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>현황</button>
+      <button type="button" data-v="alerts"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg>알림<span class="badge" id="badge" hidden></span></button>
+      <button type="button" data-v="chart"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg>관리도</button>
+      <button type="button" data-v="hist"><svg viewBox="0 0 24 24"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>조치 이력</button>
+    </nav>
+
+    <div class="scrim" id="scrim"></div>
+    <div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>
+  </div>
+
+  <aside class="sim" id="sim" aria-label="시뮬레이터">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div><div class="eyebrow">데모용 · 가상 장비</div><h2>실시간 시뮬레이터</h2></div>
+      <button class="iconbtn close" type="button" id="simClose">닫기</button>
+    </div>
+    <div class="grp">
+      <button class="runbtn" type="button" id="runBtn">일시정지</button>
+      <div class="seg" role="group" aria-label="수신 속도" id="speed">
+        <button type="button" data-s="1" aria-pressed="true">보통</button>
+        <button type="button" data-s="3" aria-pressed="false">빠르게</button>
+        <button type="button" data-s="8" aria-pressed="false">매우 빠르게</button>
+      </div>
+      <span class="note" id="simStat"></span>
+    </div>
+    <div class="grp">
+      <div class="eyebrow">이상 상황 넣기</div>
+      <div class="inj" id="inj">
+        <button type="button" data-e="purity"><b>원료 순도 급락</b><span>다음 lot 이탈</span></button>
+        <button type="button" data-e="moisture"><b>건조기 이상</b><span>수분 평균 이동</span></button>
+        <button type="button" data-e="d50"><b>분쇄볼 마모</b><span>입도 상승 추세</span></button>
+        <button type="button" data-e="bright"><b>소성 온도 저하</b><span>휘도 관리한계 이탈</span></button>
+        <button type="button" data-e="drift" class="wide"><b>정제 필터 막힘</b><span>순도가 서서히 떨어짐 → 이탈 예고 후 이탈</span></button>
+      </div>
+    </div>
+    <div class="grp">
+      <label class="tog">자동으로 이상 발생 <input type="checkbox" id="autoInj" checked></label>
+      <label class="tog">이탈 시 진동 (휴대폰) <input type="checkbox" id="vib" checked></label>
+    </div>
+    <button class="iconbtn" type="button" id="restart">처음부터 다시</button>
+    <p class="note" style="margin:0">관리한계는 과거 장기 데이터로 승인한 기준값(CL·σ)으로 <b>고정</b>합니다. 새 lot이 들어와도 한계가 흔들리지 않습니다. 이탈은 즉시 알림·진동. 관리한계 안이라도 한계 근접·치우침·추세 예측이 보이면 <b>이탈 예고</b>를 먼저 보내고, 같은 항목의 후속 신호는 한 알림에 묶습니다. 발표용으로 lot 수신 간격을 수 초로 줄였습니다.</p>
+  </aside>
+</div>
+
+<script>
+(function(){
+/* ---------- 설정 ---------- */
+const ITEMS=[
+  {key:'purity',name:'순도',unit:'%',dec:3,lsl:99.90,usl:null,m:99.950,s:0.008,hint:'원료 lot 성적서와 정제(세정·여과) 조건을 확인하세요.'},
+  {key:'d50',name:'입도 D50',unit:'㎛',dec:2,lsl:4.60,usl:5.40,m:4.98,s:0.05,hint:'분쇄 시간·볼 마모 상태와 분급기 설정을 점검하세요.'},
+  {key:'moisture',name:'수분',unit:'ppm',dec:0,lsl:null,usl:200,m:118,s:5,hint:'건조 온도·시간과 포장실 습도 기록을 확인하세요.'},
+  {key:'bright',name:'상대휘도',unit:'%',dec:1,lsl:97.0,usl:null,m:100.2,s:0.6,hint:'소성 온도 프로파일과 활성제 투입량을 확인하세요.'}
+];
+const WINDOW=30, INTERVAL=4000;
+/* 추세 예측(P3) 조건: 최근 6점 직선 적합도 r2 이상, h lot 안에 관리한계 도달, 최신값이 z·σ 이상 치우침, 5번 변화 중 mono번 이상 같은 방향 */
+const PRED={r2:0.8,h:4,z:1.5,mono:4}; // 정상 데이터 1000 lot 시뮬레이션으로 조정 (느슨하게 하면 오경보만 늘고 예고 시점은 같았음)
+const EFFECTS={
+  purity:{label:'원료 순도 급락',len:1,apply:(v)=>{v.purity=99.893}},
+  moisture:{label:'건조기 이상',len:9,apply:(v)=>{v.moisture=127+gauss()*2}},
+  d50:{label:'분쇄볼 마모',len:8,apply:(v,k)=>{v.d50=5.00+k*0.02+gauss()*0.003}},
+  bright:{label:'소성 온도 저하',len:1,apply:(v)=>{v.bright=97.7}},
+  drift:{label:'정제 필터 막힘',len:9,apply:(v,k)=>{v.purity=99.950-k*0.004+gauss()*0.0015}}
+};
+const CAUSES=['원료 품질','설비 이상','작업 조건','측정 오류','원인 조사 중','기타'];
+
+/* ---------- 상태 ---------- */
+let rs, LOTS, LIM, ALERTS, effects, aid, running=true, speed=1, timer=null, view='home', chartKey='purity', selPt=null, alertFilter='new', toastTimer=null;
+let myName='현장 관리자';
+try{const n=localStorage.getItem('lotlive.name');if(n)myName=n}catch(e){}
+
+const rnd=()=>{rs=(rs*1664525+1013904223)%4294967296;return rs/4294967296};
+const gauss=()=>{let u=0;while(!u)u=rnd();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*rnd())};
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=(v,d)=>Number.isFinite(v)?v.toFixed(d):'–';
+const hms=t=>new Date(t).toTimeString().slice(0,8);
+const hm=t=>new Date(t).toTimeString().slice(0,5);
+const itemOf=k=>ITEMS.find(i=>i.key===k);
+
+/* ---------- 데이터 생성 ---------- */
+function genValues(){
+  const v={};ITEMS.forEach(it=>v[it.key]=it.m+gauss()*it.s);
+  effects.forEach(e=>{EFFECTS[e.key].apply(v,e.step);e.step++});
+  effects=effects.filter(e=>e.step<EFFECTS[e.key].len);
+  ITEMS.forEach(it=>v[it.key]=+v[it.key].toFixed(it.dec));
+  return v;
+}
+/* 관리한계 = 승인된 기준값 (과거 장기 데이터의 CL·σ를 고정값으로 사용한다고 가정) */
+function computeLimits(){
+  LIM={};ITEMS.forEach(it=>{const mean=it.m,sigma=it.s;const c=[];
+    if(it.usl!=null)c.push((it.usl-mean)/(3*sigma));if(it.lsl!=null)c.push((mean-it.lsl)/(3*sigma));
+    LIM[it.key]={mean,sigma,ucl:mean+3*sigma,lcl:mean-3*sigma,cpk:c.length?Math.min(...c):null}});
+}
+function flagLot(i){
+  const lot=LOTS[i];lot.f={};
+  ITEMS.forEach(it=>{const L=LIM[it.key],v=lot.v[it.key],f=[];
+    if(v>L.ucl)f.push({c:'R1',sev:'bad',t:'상한 관리한계 이탈',lim:'UCL '+fmt(L.ucl,it.dec)});
+    if(v<L.lcl)f.push({c:'R1',sev:'bad',t:'하한 관리한계 이탈',lim:'LCL '+fmt(L.lcl,it.dec)});
+    if(it.usl!=null&&v>it.usl)f.push({c:'SPEC',sev:'bad',t:'규격 상한 초과',lim:'USL '+fmt(it.usl,it.dec)});
+    if(it.lsl!=null&&v<it.lsl)f.push({c:'SPEC',sev:'bad',t:'규격 하한 미달',lim:'LSL '+fmt(it.lsl,it.dec)});
+    const sd=x=>x>L.mean?1:x<L.mean?-1:0;const side=sd(v);let run=0;
+    if(side)for(let j=i;j>=0&&sd(LOTS[j].v[it.key])===side;j--)run++;
+    if(run>=7)f.push({c:'R2',sev:'warn',t:`중심선 ${side>0?'위':'아래'} 연속 ${run}점`,first:run===7,side});
+    let tr=1,dir=0;for(let j=i;j>0;j--){const d=Math.sign(LOTS[j].v[it.key]-LOTS[j-1].v[it.key]);if(!d||(dir&&d!==dir))break;dir=d;tr++}
+    if(tr>=6)f.push({c:'R3',sev:'warn',t:`연속 ${tr}점 ${dir>0?'상승':'하강'}`,first:tr===6,dir});
+    /* ---- 이탈 예고 (관리한계 안이지만 곧 벗어날 조짐) ---- */
+    if(!f.some(x=>x.sev==='bad')){
+      const z=j=>(LOTS[j].v[it.key]-L.mean)/L.sigma;
+      // P1 한계 근접: 최근 3점 중 2점이 같은 쪽 경고 구역(2σ~3σ)
+      if(i>=2)[1,-1].forEach(sg=>{const c=[i,i-1,i-2].filter(j=>sg*z(j)>2).length;
+        if(c>=2&&sg*z(i)>2)f.push({c:'P1',sev:'warn',pre:true,dirn:sg,t:`최근 3점 중 ${c}점이 ${sg>0?'UCL':'LCL'} 근처 경고 구역`})});
+      // P2 평균 이동 조짐: 최근 5점 중 4점이 같은 쪽 1σ 밖
+      if(i>=4)[1,-1].forEach(sg=>{const c=[0,1,2,3,4].filter(d=>sg*z(i-d)>1).length;
+        if(c>=4&&sg*z(i)>1)f.push({c:'P2',sev:'warn',pre:true,dirn:sg,t:`최근 5점 중 ${c}점이 중심선 ${sg>0?'위':'아래'}로 치우침`})});
+      // P3 추세 예측: 최근 6점 직선 추세가 5 lot 안에 관리한계에 닿음
+      if(i>=5){const k=6,ys=[];for(let j=i-k+1;j<=i;j++)ys.push(LOTS[j].v[it.key]);
+        const xm=(k-1)/2,ym=ys.reduce((a,b)=>a+b,0)/k;let sxy=0,sxx=0,syy=0;
+        ys.forEach((yv,xx)=>{sxy+=(xx-xm)*(yv-ym);sxx+=(xx-xm)**2;syy+=(yv-ym)**2});
+        const b=sxy/sxx,r2=syy?sxy*sxy/(sxx*syy):0,yl=ym+b*(k-1-xm),lim=b>0?L.ucl:L.lcl,h=(lim-yl)/b;
+        let mono=0;for(let j=i-k+2;j<=i;j++)if(Math.sign(LOTS[j].v[it.key]-LOTS[j-1].v[it.key])===Math.sign(b))mono++;
+        if(r2>=PRED.r2&&h>0&&h<=PRED.h&&Math.sign(b)*z(i)>PRED.z&&mono>=PRED.mono)
+          f.push({c:'P3',sev:'warn',pre:true,dirn:Math.sign(b),b,yl,h,t:`이대로면 ${h<=1?'다음 lot에서':`약 ${Math.ceil(h)} lot 뒤`} ${b>0?'UCL':'LCL'} 도달 예상`})}
+    }
+    lot.f[it.key]=f});
+}
+/* 등급: bad(이탈) > warn(주의: 연속·추세) > pre(이탈 예고) > ok */
+const RANK={ok:0,pre:1,warn:2,bad:3}, SEVTXT={bad:'이탈',warn:'주의',pre:'예고',ok:'정상'};
+const flagSev=x=>x.sev==='bad'?'bad':x.pre?'pre':'warn';
+const sevOf=fs=>fs.reduce((s,x)=>RANK[flagSev(x)]>RANK[s]?flagSev(x):s,'ok');
+const lotSev=l=>!l.f?'ok':sevOf(Object.values(l.f).flat());
+const itemSev=(l,k)=>!l.f?'ok':sevOf(l.f[k]);
+const sevCol=s=>s==='bad'?'var(--bad)':s==='warn'?'var(--warn)':'var(--accent)';
+
+function addLot(silent,t){
+  const now=t||Date.now();const d=new Date(now);
+  const lotId='PG-'+String(d.getFullYear()).slice(2)+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'-'+String(LOTS.length+1).padStart(3,'0');
+  LOTS.push({lot:lotId,t:now,v:genValues()});
+  const i=LOTS.length-1;
+  flagLot(i);
+  if(!silent)makeAlerts(i);
+}
+function warnDetail(x,it,v){
+  const L=LIM[it.key],vs=`최근값 ${fmt(v,it.dec)}${it.unit}`;
+  if(x.c==='R2')return `공정 평균이 ${x.side>0?'올라간':'내려간'} 것으로 보입니다`;
+  if(x.c==='R3'){const lim=x.dir>0?it.usl:it.lsl;return vs+(lim!=null?` · 규격까지 ${fmt(Math.abs(lim-v),it.dec)}${it.unit} 남음`:'')}
+  if(x.c==='P3')return `${vs} · lot당 ${x.b>0?'+':''}${fmt(x.b,it.dec+1)}${it.unit}씩 변화`;
+  const lim=x.dirn>0?L.ucl:L.lcl;return `${vs} · ${x.dirn>0?'UCL':'LCL'}까지 ${fmt(Math.abs(lim-v),it.dec)}${it.unit} 남음`;
+}
+/* 알림 규칙
+   - 이탈: 항상 새 알림 + 진동. 같은 항목에 앞선 예고/주의가 있으면 "몇 lot 전에 예고했는지" 연결
+   - 예고·주의: 항목별로 처음 생길 때만. 같은 항목에 아직 열린 알림이 있으면 새로 만들지 않고 그 알림에 묶음 */
+function makeAlerts(i){
+  const lot=LOTS[i];const fresh=[];let merged=null;
+  ITEMS.forEach(it=>{const f=lot.f[it.key],v=lot.v[it.key];
+    const prevF=i>0&&LOTS[i-1].f?LOTS[i-1].f[it.key]:[];
+    const isFirst=x=>x.c==='R2'||x.c==='R3'?x.first:!prevF.some(p=>p.c===x.c&&p.dirn===x.dirn);
+    const episode=ALERTS.find(a=>a.key===it.key&&a.sev==='warn'&&i-a.iLast<=10);
+    const bad=f.filter(x=>x.sev==='bad');
+    if(bad.length){
+      fresh.push({sev:'bad',kind:'bad',key:it.key,i,title:`${it.name} 이탈`,text:bad.map(x=>x.t).join(', '),detail:`${fmt(v,it.dec)}${it.unit} · ${bad.map(x=>x.lim).join(', ')}`,
+        lead:episode?{id:episode.id,lots:i-episode.i,lot:LOTS[episode.i].lot,text:episode.text}:null});
+      return;
+    }
+    const warns=f.filter(x=>x.sev==='warn'&&isFirst(x));
+    if(!warns.length)return;
+    if(episode&&episode.status!=='done'){
+      warns.forEach(x=>episode.extra.push({i,text:x.t}));episode.iLast=i;
+      if(warns.some(x=>!x.pre))episode.kind='warn';
+      if(episode.status==='ack')episode.status='new';
+      merged=merged||{a:episode,text:warns.map(x=>x.t).join(', ')};return;
+    }
+    const x=warns[0],pre=warns.every(w=>w.pre);
+    fresh.push({sev:'warn',kind:pre?'pre':'warn',key:it.key,i,title:`${it.name} ${pre?'이탈 예고':'주의'}`,text:x.t,detail:warnDetail(x,it,v),
+      extra:warns.slice(1).map(w=>({i,text:w.t}))});
+  });
+  fresh.forEach(a=>{a.id=++aid;a.t=lot.t;a.status='new';a.log=[];a.iLast=i;a.extra=a.extra||[];ALERTS.unshift(a)});
+  if(merged&&!fresh.length){ // 묶인 신호는 알림을 맨 위로 올리고 조용히 알려 줌
+    ALERTS.splice(ALERTS.indexOf(merged.a),1);ALERTS.unshift(merged.a);
+    showToast(merged.a,1,'추가 신호 · '+merged.text);
+  }
+  if(fresh.length){
+    const top=fresh.find(a=>a.sev==='bad')||fresh[0];
+    showToast(top,fresh.length);
+    if(top.sev==='bad'&&$('vib').checked&&navigator.vibrate)try{navigator.vibrate([200,100,200])}catch(e){}
+  }
+}
+
+/* ---------- 시뮬레이션 루프 ---------- */
+function tick(){
+  if($('autoInj').checked&&!effects.length&&rnd()<0.07){const ks=Object.keys(EFFECTS);inject(ks[Math.floor(rnd()*ks.length)],true)}
+  addLot(false);render();schedule();
+}
+function schedule(){clearTimeout(timer);if(running)timer=setTimeout(tick,INTERVAL/speed)}
+function inject(k){if(effects.some(e=>e.key===k))return;effects.push({key:k,step:0});renderSim()}
+function init(){
+  rs=20261126;LOTS=[];ALERTS=[];effects=[];aid=0;selPt=null;computeLimits();
+  const start=Date.now()-24*INTERVAL;
+  for(let k=0;k<24;k++)addLot(true,start+k*INTERVAL);
+  render();schedule();
+}
+
+/* ---------- 차트 ---------- */
+function chartSVG(it,{W=358,H=210,hi=-1,interactive=false,forecast=false}={}){
+  const L=LIM[it.key];let start=Math.max(0,LOTS.length-WINDOW);
+  if(hi>=0&&hi<start)start=Math.max(0,hi-WINDOW+6);
+  const pts=LOTS.slice(start,start+WINDOW),n=pts.length;
+  const PL=44,PR=8,PT=10,PB=22;
+  // 최신 lot에 추세 예측(P3)이 있으면 오른쪽에 5 lot만큼 자리를 비워 예측선을 그림
+  const fc=forecast&&start+n===LOTS.length&&pts[n-1].f?pts[n-1].f[it.key].find(x=>x.c==='P3'):null;
+  const slots=fc?n+5:n;
+  const cand=[...pts.map(p=>p.v[it.key]),L.ucl,L.lcl];if(it.usl!=null)cand.push(it.usl);if(it.lsl!=null)cand.push(it.lsl);
+  if(fc)cand.push(fc.yl+fc.b*Math.min(5,Math.ceil(fc.h)+1));
+  let lo=Math.min(...cand),hi2=Math.max(...cand);const pad=(hi2-lo)*0.08||1;lo-=pad;hi2+=pad;
+  const step=(W-PL-PR)/Math.max(1,slots-1);
+  const x=i=>PL+i*step;const y=v=>PT+(hi2-v)*(H-PT-PB)/(hi2-lo);
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(it.name)} 관리도">`;
+  // 경고 구역 (2σ~3σ): 여기 들어오면 이탈 예고 대상
+  const u2=L.mean+2*L.sigma,l2=L.mean-2*L.sigma;
+  s+=`<rect x="${PL}" y="${y(L.ucl)}" width="${W-PL-PR}" height="${y(u2)-y(L.ucl)}" fill="var(--warn-soft)"/><rect x="${PL}" y="${y(l2)}" width="${W-PL-PR}" height="${y(L.lcl)-y(l2)}" fill="var(--warn-soft)"/>`;
+  const hl=(v,col,dash,lab)=>v==null?'':`<line x1="${PL}" x2="${W-PR}" y1="${y(v)}" y2="${y(v)}" stroke="${col}" stroke-width="1.2" ${dash?`stroke-dasharray="${dash}"`:''}/><text x="${PL-5}" y="${y(v)+3.5}" text-anchor="end" font-size="9" font-weight="600" fill="${col}" font-family="var(--f-mono)">${lab}</text>`;
+  s+=hl(it.usl,'var(--spec)','2 3','USL')+hl(it.lsl,'var(--spec)','2 3','LSL')+hl(L.ucl,'var(--bad)','5 3','UCL')+hl(L.lcl,'var(--bad)','5 3','LCL')+hl(L.mean,'var(--muted)','','CL');
+  s+=`<path d="${pts.map((p,i)=>(i?'L':'M')+x(i).toFixed(1)+' '+y(p.v[it.key]).toFixed(1)).join('')}" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linejoin="round"/>`;
+  if(fc){const lim=fc.b>0?L.ucl:L.lcl,x0=x(n-1),hEnd=Math.min(5,Math.ceil(fc.h)+1),xc=x(n-1+fc.h);
+    s+=`<line x1="${x0}" y1="${y(fc.yl)}" x2="${x(n-1+hEnd)}" y2="${y(fc.yl+fc.b*hEnd)}" stroke="var(--accent)" stroke-width="1.6" stroke-dasharray="4 3"/>`+
+      `<circle cx="${xc}" cy="${y(lim)}" r="5" fill="none" stroke="var(--bad)" stroke-width="1.6"/>`+
+      `<text x="${Math.min(xc,W-PR-2)}" y="${y(lim)+(fc.b>0?-9:16)}" text-anchor="end" font-size="9.5" font-weight="700" fill="var(--bad)">${fc.h<=1?'다음 lot':`~${Math.ceil(fc.h)} lot 뒤`}</text>`;}
+  pts.forEach((p,i)=>{const gi=start+i,sv=itemSev(p,it.key);const col=sevCol(sv);
+    const big=gi===hi||gi===selPt;
+    if(gi===hi)s+=`<circle cx="${x(i)}" cy="${y(p.v[it.key])}" r="9" fill="none" stroke="${col}" stroke-width="1.5" opacity=".5"/>`;
+    s+=`<circle cx="${x(i)}" cy="${y(p.v[it.key])}" r="${big?5.5:sv==='ok'?2.8:4.2}" fill="${sv==='ok'&&!big?'var(--surface)':col}" stroke="${col}" stroke-width="1.6"/>`;
+    if(interactive)s+=`<rect x="${x(i)-step/2}" y="${PT}" width="${step}" height="${H-PT-PB}" fill="transparent" data-i="${gi}" style="cursor:pointer"/>`;
+  });
+  const first=pts[0],last=pts[n-1];
+  s+=`<text x="${PL}" y="${H-6}" font-size="9" fill="var(--muted)" font-family="var(--f-mono)">${hm(first.t)}</text><text x="${x(n-1)}" y="${H-6}" text-anchor="${fc?'middle':'end'}" font-size="9" fill="var(--muted)" font-family="var(--f-mono)">${hm(last.t)}</text>`;
+  if(fc)s+=`<text x="${W-PR}" y="${H-6}" text-anchor="end" font-size="9" fill="var(--accent)" font-weight="600">예측 →</text>`;
+  return s+'</svg>';
+}
+function spark(it){
+  const pts=LOTS.slice(-15),L=LIM[it.key],W=100,H=28;
+  const vs=[...pts.map(p=>p.v[it.key]),L.ucl,L.lcl];const lo=Math.min(...vs),hi=Math.max(...vs);
+  const x=i=>i*W/(pts.length-1),y=v=>2+(hi-v)*(H-4)/(hi-lo||1);
+  const last=pts[pts.length-1],sv=itemSev(last,it.key),col=sevCol(sv);
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><line x1="0" x2="${W}" y1="${y(L.ucl)}" y2="${y(L.ucl)}" stroke="var(--bad)" stroke-width=".8" stroke-dasharray="3 2" vector-effect="non-scaling-stroke"/><line x1="0" x2="${W}" y1="${y(L.lcl)}" y2="${y(L.lcl)}" stroke="var(--bad)" stroke-width=".8" stroke-dasharray="3 2" vector-effect="non-scaling-stroke"/><polyline points="${pts.map((p,i)=>x(i).toFixed(1)+','+y(p.v[it.key]).toFixed(1)).join(' ')}" fill="none" stroke="${col}" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>`;
+}
+
+/* ---------- 화면 ---------- */
+const stPill=a=>a.status==='new'?'<span class="pill st-new">미확인</span>':a.status==='ack'?'<span class="pill st-ack">확인함</span>':'<span class="pill st-done">조치완료</span>';
+const alertRow=a=>`<button type="button" class="row ${a.status==='new'?'new':''}" data-a="${a.id}"><span class="dot ${a.kind}"></span><span class="main"><span class="t1" style="display:block">${esc(a.title)} · ${esc(a.text)}</span><span class="t2" style="display:block">${esc(LOTS[a.i].lot)} · ${a.lead?`<b style="color:var(--accent)">${a.lead.lots} lot 전 예고됨</b> · `:''}${a.extra.length?`추가 신호 ${a.extra.length}건 · `:''}${esc(a.detail)}</span></span><span style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">${stPill(a)}<span class="tm">${hm(a.t)}</span></span></button>`;
+
+function renderHome(){
+  const nw=ALERTS.filter(a=>a.status==='new'),nb=nw.filter(a=>a.sev==='bad').length;
+  const st=nb?'bad':nw.length?'warn':'ok';
+  const live=LOTS;
+  const cBad=live.filter(l=>lotSev(l)==='bad').length,cWarn=live.filter(l=>{const s=lotSev(l);return s==='warn'||s==='pre'}).length,cDone=ALERTS.filter(a=>a.status==='done').length;
+  const last=LOTS[LOTS.length-1];
+  const onlyPre=nw.length&&nw.every(a=>a.kind==='pre');
+  // 새 알림이 없어도 최근 lot에 예고·주의·이탈 신호가 있으면 '정상 가동 중'으로 보이지 않게 함
+  const lastSv=last?lotSev(last):'ok';
+  let h0='';
+  if(st==='ok'&&lastSv!=='ok'){
+    const lastTxt=lastSv==='bad'?'이탈':lastSv==='warn'?'주의':'이탈 예고';
+    h0=`<div class="hero ${lastSv==='bad'?'bad':'warn'}"><span class="ic">!</span><div><div class="big">최근 lot ${lastTxt} 신호</div><div class="muted" style="font-size:.8rem">새 알림은 없지만 ${esc(last.lot)}에 ${lastTxt} 신호가 이어지고 있습니다. 진행 중인 알림과 관리도를 확인하세요</div></div><button class="go" type="button" data-go="alerts">확인</button></div>`;
+  }
+  let h=h0||`<div class="hero ${st}"><span class="ic">${st==='ok'?'✓':'!'}</span><div><div class="big">${st==='ok'?'정상 가동 중':st==='bad'?`이탈 미확인 ${nb}건`:onlyPre?`이탈 예고 ${nw.length}건`:`주의·예고 미확인 ${nw.length}건`}</div><div class="muted" style="font-size:.8rem">${st==='ok'?'확인할 알림이 없습니다':onlyPre?'아직 관리한계 안입니다. 이탈 전에 점검하세요':'탭해서 확인하고 조치를 기록하세요'}</div></div>${st!=='ok'?'<button class="go" type="button" data-go="alerts">확인</button>':''}</div>`;
+  h+=`<div class="kpis"><div><b>${LOTS.length}</b><span>수신 lot</span></div><div><b style="color:var(--bad)">${cBad}</b><span>이탈 lot</span></div><div><b style="color:var(--warn)">${cWarn}</b><span>주의·예고 lot</span></div><div><b style="color:var(--ok)">${cDone}</b><span>조치 완료</span></div></div>`;
+  const bads=ALERTS.filter(a=>a.sev==='bad'),led=bads.filter(a=>a.lead);
+  if(bads.length)h+=`<div class="leadbar">이탈 ${bads.length}건 중 <b>${led.length}건을 미리 예고</b>${led.length?` (평균 ${(led.reduce((s,a)=>s+a.lead.lots,0)/led.length).toFixed(1)} lot 전)`:''}</div>`;
+  h+=`<div class="sec-h"><h2>항목별 최신값</h2><span class="muted" style="font-size:.74rem">${esc(last.lot)}</span></div><div class="items">`+
+    ITEMS.map(it=>`<button type="button" class="item" data-item="${it.key}"><span class="nm"><span class="dot ${itemSev(last,it.key)}"></span>${esc(it.name)}</span><span class="val">${fmt(last.v[it.key],it.dec)}<small>${esc(it.unit)}</small></span>${spark(it)}</button>`).join('')+`</div>`;
+  const recent=ALERTS.filter(a=>a.status==='new').slice(0,3);
+  h+=`<div class="sec-h"><h2>미확인 알림</h2>${nw.length>3?`<button class="link" type="button" data-go="alerts">전체 ${nw.length}건</button>`:''}</div>`;
+  h+=`<div class="list">${recent.length?recent.map(alertRow).join(''):'<div class="empty">미확인 알림이 없습니다</div>'}</div>`;
+  h+=`<div class="sec-h"><h2>최근 수신 lot</h2></div><div class="list">`+
+    LOTS.slice(-5).reverse().map(l=>{const i=LOTS.indexOf(l),sv=lotSev(l);return `<button type="button" class="row" data-lot="${i}"><span class="main"><span class="t1 mono" style="display:block">${esc(l.lot)}</span><span class="t2" style="display:block">${ITEMS.map(it=>fmt(l.v[it.key],it.dec)+esc(it.unit)).join(' · ')}</span></span><span style="display:flex;flex-direction:column;align-items:flex-end;gap:3px"><span class="pill ${sv}">${SEVTXT[sv]}</span><span class="tm">${hms(l.t)}</span></span></button>`}).join('')+`</div>`;
+  $('v-home').innerHTML=h;
+}
+function renderAlerts(){
+  const list=alertFilter==='new'?ALERTS.filter(a=>a.status==='new'):ALERTS;
+  $('v-alerts').innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div class="seg" role="group" aria-label="알림 필터"><button type="button" data-f="new" aria-pressed="${alertFilter==='new'}">미확인</button><button type="button" data-f="all" aria-pressed="${alertFilter==='all'}">전체</button></div><span class="muted" style="font-size:.76rem">총 ${ALERTS.length}건</span></div>`+
+    `<div class="list">${list.length?list.map(alertRow).join(''):`<div class="empty">${alertFilter==='new'?'미확인 알림이 없습니다':'아직 알림이 없습니다'}</div>`}</div>`;
+}
+function renderChart(){
+  const it=itemOf(chartKey),L=LIM[it.key];
+  const p=selPt!=null?LOTS[selPt]:null;
+  let info='점을 탭하면 lot 정보를 볼 수 있습니다.';
+  if(p){const f=p.f?p.f[it.key]:[];info=`<b class="mono">${esc(p.lot)}</b> · ${hms(p.t)}<br><span class="num">${fmt(p.v[it.key],it.dec)} ${esc(it.unit)}</span> · ${f.length?esc(f.map(x=>x.t).join(', ')):'정상'}`}
+  const cpk=L.cpk,cc=cpk==null?'':cpk>=1.33?'var(--ok)':cpk>=1?'var(--warn)':'var(--bad)';
+  $('v-chart').innerHTML=`<div class="chips" role="tablist">${ITEMS.map(x=>`<button type="button" class="chip" role="tab" data-k="${x.key}" aria-selected="${x.key===chartKey}"><span class="dot ${itemSev(LOTS[LOTS.length-1],x.key)}"></span>${esc(x.name)}</button>`).join('')}</div>`+
+    `<div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><b>${esc(it.name)} <span class="muted" style="font-weight:400">(${esc(it.unit)})</span></b><span class="muted" style="font-size:.72rem">최근 ${Math.min(WINDOW,LOTS.length)}개 lot</span></div>`+
+    `<div class="chart" id="chartWrap">${chartSVG(it,{interactive:true,forecast:true})}</div><div class="ptinfo">${info}</div>`+
+    `<div class="lims">${[['CL',fmt(L.mean,it.dec+1)],['UCL',fmt(L.ucl,it.dec+1)],['LCL',fmt(L.lcl,it.dec+1)],['σ',fmt(L.sigma,it.dec+1)],['규격',`${it.lsl!=null?fmt(it.lsl,it.dec):'–'}~${it.usl!=null?fmt(it.usl,it.dec):'–'}`],['Cpk',`<span style="color:${cc}">${cpk==null?'–':cpk.toFixed(2)}</span>`]].map(([k,v])=>`<div><div class="k">${k}</div><div class="v">${v}</div></div>`).join('')}</div>`+
+    `<p class="muted" style="font-size:.72rem;margin:8px 0 0">빨간 점선 = 관리한계(승인 기준값, 고정), 회색 점선 = 규격, 노란 띠 = 경고 구역(2σ~3σ), 보라 점 = 이탈 예고, 보라 점선 = 추세 예측.</p></div>`;
+}
+function renderHist(){
+  const done=ALERTS.filter(a=>a.status!=='new').sort((a,b)=>b.log[b.log.length-1].at-a.log[a.log.length-1].at);
+  $('v-hist').innerHTML=`<div class="sec-h"><h2>조치 이력</h2><span class="muted" style="font-size:.74rem">${done.length}건</span></div>`+
+    `<div class="list">${done.length?done.map(a=>{const lg=a.log[a.log.length-1];return `<button type="button" class="row" data-a="${a.id}"><span class="dot ${a.sev}"></span><span class="main"><span class="t1" style="display:block">${esc(a.title)} · ${esc(LOTS[a.i].lot)}</span><span class="t2" style="display:block">${a.cause?esc(a.cause)+' · ':''}${esc(lg.memo||lg.what)} — ${esc(lg.by)}</span></span><span style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">${stPill(a)}<span class="tm">${hm(lg.at)}</span></span></button>`}).join(''):'<div class="empty">아직 기록이 없습니다.<br>알림을 열어 확인하거나 조치를 저장하면 여기에 남습니다.</div>'}</div>`;
+}
+function renderTop(){
+  const n=ALERTS.filter(a=>a.status==='new').length;
+  $('badge').hidden=!n;$('badge').textContent=n>99?'99+':n;
+  document.title=n?`(${n}) LOT 실시간 알림`:'LOT 실시간 알림';
+  updLive();
+}
+function updLive(){
+  const last=LOTS[LOTS.length-1];if(!last)return;const sec=Math.max(0,Math.round((Date.now()-last.t)/1000));
+  $('live').className='live '+(running?'on':'off');
+  $('liveTxt').textContent=(running?'실시간 수신 중':'수신 일시정지')+` · 마지막 ${hms(last.t)} (${sec}초 전)`;
+}
+function renderSim(){
+  $('runBtn').textContent=running?'일시정지':'수신 재개';$('runBtn').classList.toggle('paused',!running);
+  $('inj').querySelectorAll('button').forEach(b=>b.disabled=effects.some(e=>e.key===b.dataset.e));
+  $('simStat').textContent=effects.length?`진행 중: ${effects.map(e=>EFFECTS[e.key].label+` (${EFFECTS[e.key].len-e.step} lot 남음)`).join(', ')}`:'진행 중인 이상 상황 없음';
+}
+function render(){renderTop();renderHome();renderAlerts();renderChart();renderHist();renderSim()}
+function setView(v){view=v;document.querySelectorAll('.view').forEach(s=>s.classList.toggle('on',s.id==='v-'+v));
+  document.querySelectorAll('.bnav button').forEach(b=>b.dataset.v===v?b.setAttribute('aria-current','page'):b.removeAttribute('aria-current'));
+  document.querySelector('.views').scrollTop=0}
+
+/* ---------- 토스트 · 시트 ---------- */
+function showToast(a,cnt,sub){
+  const t=$('toast');t.className='toast '+a.sev;t.dataset.a=a.id;
+  t.style.borderLeftColor=a.kind==='pre'?'var(--accent)':'';
+  const lead=a.lead?` · ${a.lead.lots} lot 전 예고됨`:'';
+  t.innerHTML=`<span class="dot ${a.kind}" style="margin-top:6px"></span><span><span class="tt" style="display:block">${esc(a.title)} · ${esc(LOTS[a.i].lot)}</span><span class="td" style="display:block">${esc(sub||a.text)}${cnt>1?` 외 ${cnt-1}건`:''}${lead}</span></span>`;
+  requestAnimationFrame(()=>t.classList.add('show'));
+  clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),a.sev==='bad'?8000:5000);
+}
+function openSheet(html){$('sheet').innerHTML='<div class="grab"></div>'+html;$('sheet').classList.add('on');$('scrim').classList.add('on');$('sheet').scrollTop=0}
+function closeSheet(){$('sheet').classList.remove('on');$('scrim').classList.remove('on')}
+function openAlert(id){
+  const a=ALERTS.find(x=>x.id===id);if(!a)return;const it=itemOf(a.key),lot=LOTS[a.i];
+  let h=`<div style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><span class="pill ${a.kind}">${SEVTXT[a.kind]}</span>${stPill(a)}</div><h3>${esc(a.title)} · ${esc(a.text)}</h3>`;
+  if(a.kind==='pre')h+=`<div class="lead"><span>⏱</span><span>아직 관리한계 안입니다. <b>이탈하기 전에</b> 점검하면 불량 lot을 막을 수 있습니다.</span></div>`;
+  if(a.lead)h+=`<div class="lead"><span>⏱</span><span><b>${a.lead.lots} lot 전에 예고</b>했던 이상입니다. ${esc(a.lead.lot)}에서 "${esc(a.lead.text)}"로 먼저 알렸습니다.</span></div>`;
+  h+=`<dl class="kv"><dt>LOT</dt><dd class="mono">${esc(lot.lot)}</dd><dt>수신</dt><dd class="mono">${hms(lot.t)}</dd><dt>측정값</dt><dd class="num">${fmt(lot.v[it.key],it.dec)} ${esc(it.unit)}</dd><dt>내용</dt><dd>${esc(a.detail)}</dd></dl>`;
+  if(a.extra.length)h+=`<div class="hint"><b>이후 추가 신호</b>${a.extra.map(e=>`<span class="mono">${esc(LOTS[e.i].lot.slice(-3))}</span> ${esc(e.text)}`).join('<br>')}</div>`;
+  h+=`<div class="chart">${chartSVG(it,{hi:a.i,H:180})}</div>`;
+  h+=`<div class="hint"><b>점검 포인트</b>${esc(it.hint)}</div>`;
+  if(a.log.length)h+=`<div class="log">${a.log.map(l=>`<div><span class="mono muted">${hms(l.at)}</span> <b>${esc(l.by)}</b> · ${esc(l.what)}${l.memo?`<br><span class="muted">${esc(l.memo)}</span>`:''}</div>`).join('')}</div>`;
+  if(a.status!=='done'){
+    h+=`<div class="form"><label for="fBy">처리자</label><input id="fBy" value="${esc(myName)}" autocomplete="name">`+
+      `<label for="fCause">추정 원인</label><select id="fCause"><option value="">선택</option>${CAUSES.map(c=>`<option ${a.cause===c?'selected':''}>${c}</option>`).join('')}</select>`+
+      `<label for="fMemo">조치 내용</label><textarea id="fMemo" placeholder="예: 건조기 3호기 온도 센서 교체, 해당 lot 재검사 의뢰"></textarea>`+
+      `<div class="btns">${a.status==='new'?'<button class="btn" type="button" id="bAck">확인만</button>':''}<button class="btn primary" type="button" id="bDone">조치 완료 저장</button></div><span class="muted" id="fMsg" style="font-size:.78rem;min-height:1.2em"></span></div>`;
+  }else h+=`<div class="btns"><button class="btn" type="button" id="bClose">닫기</button></div>`;
+  openSheet(h);
+  const by=()=>{const v=($('fBy').value||'').trim()||'현장 관리자';myName=v;try{localStorage.setItem('lotlive.name',v)}catch(e){}return v};
+  if($('bAck'))$('bAck').onclick=()=>{a.status='ack';a.log.push({at:Date.now(),by:by(),what:'알림 확인'});closeSheet();render()};
+  if($('bDone'))$('bDone').onclick=()=>{const c=$('fCause').value,m=$('fMemo').value.trim();
+    if(!c){$('fMsg').textContent='추정 원인을 골라 주세요.';$('fMsg').style.color='var(--bad)';return}
+    a.status='done';a.cause=c;a.log.push({at:Date.now(),by:by(),what:'조치 완료 · '+c,memo:m});closeSheet();render()};
+  if($('bClose'))$('bClose').onclick=closeSheet;
+}
+function openLot(i){
+  const l=LOTS[i],sv=lotSev(l);
+  openSheet(`<div style="margin-bottom:4px"><span class="pill ${sv}">${SEVTXT[sv]}</span></div><h3 class="mono">${esc(l.lot)}</h3><div class="muted" style="font-size:.8rem">수신 ${hms(l.t)}</div>`+
+    `<div class="vals">${ITEMS.map(it=>{const f=l.f?l.f[it.key]:[],s=itemSev(l,it.key);return `<div><span><span class="dot ${s}"></span> ${esc(it.name)}${f.length?`<br><span class="muted" style="font-size:.74rem">${esc(f.map(x=>x.t).join(', '))}</span>`:''}</span><b class="num">${fmt(l.v[it.key],it.dec)} ${esc(it.unit)}</b></div>`}).join('')}</div>`+
+    `<div class="btns" style="margin-top:12px"><button class="btn" type="button" id="bClose">닫기</button></div>`);
+  $('bClose').onclick=closeSheet;
+}
+
+/* ---------- 이벤트 ---------- */
+document.querySelector('.bnav').addEventListener('click',e=>{const b=e.target.closest('button[data-v]');if(b)setView(b.dataset.v)});
+document.querySelector('.views').addEventListener('click',e=>{
+  const t=e.target;let el;
+  if(el=t.closest('[data-a]'))return openAlert(+el.dataset.a);
+  if(el=t.closest('[data-lot]'))return openLot(+el.dataset.lot);
+  if(el=t.closest('[data-go]'))return setView(el.dataset.go);
+  if(el=t.closest('[data-item]')){chartKey=el.dataset.item;selPt=null;renderChart();return setView('chart')}
+  if(el=t.closest('[data-f]')){alertFilter=el.dataset.f;return renderAlerts()}
+  if(el=t.closest('[data-k]')){chartKey=el.dataset.k;selPt=null;return renderChart()}
+  if(el=t.closest('rect[data-i]')){selPt=+el.dataset.i;return renderChart()}
+});
+$('toast').onclick=()=>{$('toast').classList.remove('show');openAlert(+$('toast').dataset.a)};
+$('scrim').onclick=closeSheet;
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeSheet();$('sim').classList.remove('open')}});
+$('runBtn').onclick=()=>{running=!running;schedule();renderSim();updLive()};
+$('speed').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;speed=+b.dataset.s;$('speed').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));schedule()});
+$('inj').addEventListener('click',e=>{const b=e.target.closest('button');if(b&&!b.disabled)inject(b.dataset.e)});
+$('restart').onclick=()=>{closeSheet();$('toast').classList.remove('show');running=true;init()};
+$('demoBtn').onclick=()=>$('sim').classList.add('open');
+$('simClose').onclick=()=>$('sim').classList.remove('open');
+setInterval(updLive,1000);
+
+init();
+window.__live={PRED,init,LOTS:()=>LOTS,ALERTS:()=>ALERTS,LIM:()=>LIM,tick,inject,pause:()=>{running=false;schedule()}};
+})();
+</script>
+</body>
+</html>

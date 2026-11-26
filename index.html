@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>LOT 품질 관리도</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: 상단 요약 → 자동 분석 → 항목별 관리도 → lot 표 → 데이터 입력. 운영 화면처럼 훑어보는 순서. */
+:root{
+  --bg:#f4f5f8; --surface:#ffffff; --surface-2:#eceef4; --line:#d8dbe5;
+  --fg:#171a24; --muted:#5d6273; --accent:#4b46c8; --accent-soft:#e7e6fb;
+  --ok:#1f8a5b; --ok-soft:#e2f3ea; --warn:#b26a00; --warn-soft:#fbefd9; --bad:#c8333b; --bad-soft:#fbe4e5;
+  --spec:#8a8fa0; --zone:rgba(75,70,200,.06);
+  --f-body:"IBM Plex Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12141b; --surface:#1a1d27; --surface-2:#232735; --line:#323748;
+  --fg:#e8eaf2; --muted:#9aa0b4; --accent:#9d99ff; --accent-soft:#2a2a4d;
+  --ok:#4cc58c; --ok-soft:#173326; --warn:#f0a73a; --warn-soft:#3a2c12; --bad:#ff6b72; --bad-soft:#3d1c20;
+  --spec:#7c8296; --zone:rgba(157,153,255,.08); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12141b; --surface:#1a1d27; --surface-2:#232735; --line:#323748;
+  --fg:#e8eaf2; --muted:#9aa0b4; --accent:#9d99ff; --accent-soft:#2a2a4d;
+  --ok:#4cc58c; --ok-soft:#173326; --warn:#f0a73a; --warn-soft:#3a2c12; --bad:#ff6b72; --bad-soft:#3d1c20;
+  --spec:#7c8296; --zone:rgba(157,153,255,.08); color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:14px;line-height:1.55;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px 48px}
+.wrap{max-width:1080px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+h1,h2,h3{margin:0;text-wrap:balance}
+h1{font-size:1.6rem;font-weight:700;letter-spacing:-.01em}
+h2{font-size:1.05rem;font-weight:600}
+.eyebrow{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.mono,.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:12px}
+.sample-tag{display:inline-flex;align-items:center;gap:6px;font-size:.78rem;padding:4px 10px;border-radius:999px;background:var(--warn-soft);color:var(--warn);font-weight:600}
+.sub{color:var(--muted);margin-top:4px}
+section.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px}
+.panel-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.stat{background:var(--surface);padding:14px 16px;display:flex;flex-direction:column;gap:2px}
+.stat .v{font-family:var(--f-mono);font-size:1.6rem;font-weight:600;font-variant-numeric:tabular-nums}
+.stat .l{font-size:.8rem;color:var(--muted)}
+.stat.bad .v{color:var(--bad)} .stat.warn .v{color:var(--warn)} .stat.ok .v{color:var(--ok)}
+@media (max-width:640px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.summary{display:flex;flex-direction:column;gap:10px;margin:0;padding:0;list-style:none}
+.summary li{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start;padding:10px 12px;border-radius:8px;background:var(--surface-2)}
+.summary li .txt{min-width:0}
+.summary li b{font-weight:600}
+.summary .act{display:block;color:var(--muted);font-size:.86rem;margin-top:2px}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:.74rem;font-weight:600;padding:2px 9px;border-radius:999px;white-space:nowrap}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.pill.bad{background:var(--bad-soft);color:var(--bad)} .pill.warn{background:var(--warn-soft);color:var(--warn)} .pill.ok{background:var(--ok-soft);color:var(--ok)}
+.note{font-size:.8rem;color:var(--muted)}
+.tabs{display:flex;flex-wrap:wrap;gap:6px}
+.tab{font:inherit;font-size:.86rem;display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:7px;border:1px solid var(--line);background:var(--surface);color:var(--fg);cursor:pointer}
+.tab .dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.tab .dot.warn{background:var(--warn)} .tab .dot.bad{background:var(--bad)}
+.tab[aria-selected="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+.tab:focus-visible,button:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.chart-box{position:relative;overflow-x:auto}
+.chart-box svg{display:block;width:100%;min-width:560px;height:auto}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:.78rem;color:var(--muted);margin-top:8px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.lg-line{width:18px;height:0;border-top:2px solid}
+.limits{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin-top:14px}
+.limits div{background:var(--surface-2);border-radius:7px;padding:8px 10px}
+.limits .k{font-size:.72rem;color:var(--muted);letter-spacing:.04em}
+.limits .val{font-family:var(--f-mono);font-variant-numeric:tabular-nums;font-weight:600}
+@media (max-width:640px){.limits{grid-template-columns:repeat(3,minmax(0,1fr))}}
+#tip{position:absolute;pointer-events:none;background:var(--fg);color:var(--bg);font-size:.78rem;padding:7px 10px;border-radius:6px;white-space:nowrap;transform:translate(-50%,calc(-100% - 10px));z-index:2;line-height:1.4}
+.table-wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:620px;font-size:.84rem}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{font-size:.74rem;color:var(--muted);font-weight:600;letter-spacing:.03em;position:sticky;top:0;background:var(--surface)}
+th:first-child,td:first-child,th:nth-child(2),td:nth-child(2){text-align:left}
+td.c-bad{color:var(--bad);font-weight:600;background:var(--bad-soft)}
+td.c-warn{color:var(--warn);font-weight:600;background:var(--warn-soft)}
+tr.sel td{outline:none;background:var(--accent-soft)}
+.controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+select,button.btn{font:inherit;font-size:.85rem;padding:6px 10px;border-radius:7px;border:1px solid var(--line);background:var(--surface);color:var(--fg)}
+button.btn{cursor:pointer}
+a.btn{font-size:.85rem;padding:6px 10px;border-radius:7px;border:1px solid var(--line);background:var(--surface);color:var(--fg);white-space:nowrap}
+.pill.pre{background:var(--accent-soft);color:var(--accent)}
+td.c-zone{box-shadow:inset 0 -3px 0 var(--warn)}
+tbody tr{cursor:pointer} tbody tr:hover td{background:var(--surface-2)}
+.base-note{font-size:.8rem;color:var(--warn);margin-top:6px}
+.lot-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.lot-card{background:var(--surface-2);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:4px;border-left:4px solid var(--ok)}
+.lot-card.warn{border-left-color:var(--warn)} .lot-card.bad{border-left-color:var(--bad)} .lot-card.pre{border-left-color:var(--accent)}
+.lot-card .nm{font-weight:600;display:flex;justify-content:space-between;gap:6px;align-items:center}
+.lot-card .vv{font-family:var(--f-mono);font-size:1.15rem;font-weight:600}
+.lot-card .sm{font-size:.78rem;color:var(--muted)}
+button.btn.primary{background:var(--accent);color:var(--surface);border-color:var(--accent);font-weight:600}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{font:inherit;font-size:.8rem;padding:5px 10px;border:0;background:var(--surface);color:var(--muted);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+@media (max-width:760px){.grid2{grid-template-columns:minmax(0,1fr)}}
+textarea{width:100%;min-height:130px;font-family:var(--f-mono);font-size:.78rem;padding:10px;border-radius:7px;border:1px solid var(--line);background:var(--surface-2);color:var(--fg);resize:vertical}
+pre.fmt{margin:0;background:var(--surface-2);border-radius:7px;padding:10px;font-family:var(--f-mono);font-size:.76rem;overflow-x:auto}
+.msg{font-size:.82rem;min-height:1.2em}
+.msg.err{color:var(--bad)} .msg.okm{color:var(--ok)}
+.rules{margin:0;padding-left:18px;color:var(--muted);font-size:.84rem;display:flex;flex-direction:column;gap:4px}
+@media (prefers-reduced-motion:no-preference){.pt{transition:r .12s}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">AID 해커톤 · ㈜포스포 연계 과제</div>
+      <h1>LOT 품질 관리도</h1>
+      <div class="sub" id="subline">형광소재 분말 · 배치(lot)별 품질검사 결과 추세 대시보드</div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+      <span class="sample-tag" id="dataTag">예시 데이터 (가상 수치)</span>
+      <a class="btn" href="start.html" style="text-decoration:none">확장 화면 (알림·현장 조치) ›</a>
+    </div>
+  </header>
+
+  <div class="stats" id="stats"></div>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>자동 분석 요약</h2>
+      <span class="note">관리도 규칙으로 찾은 이상 신호와 점검 포인트</span>
+    </div>
+    <ul class="summary" id="summary"></ul>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div class="tabs" role="tablist" id="tabs"></div>
+      <div class="controls">
+        <label class="note" for="baseN">관리한계 계산 기준 (기준 구간 고정)</label>
+        <select id="baseN"></select>
+      </div>
+    </div>
+    <div class="base-note" id="baseNote" hidden></div>
+    <div class="chart-box" id="chartBox"><div id="tip" hidden></div></div>
+    <div class="legend">
+      <span><i class="lg-line" style="border-color:var(--accent)"></i>측정값</span>
+      <span><i class="lg-line" style="border-color:var(--muted)"></i>중심선 CL</span>
+      <span><i class="lg-line" style="border-color:var(--bad);border-top-style:dashed"></i>관리한계 UCL/LCL (±3σ)</span>
+      <span><i class="lg-line" style="border-color:var(--spec);border-top-style:dotted"></i>규격 USL/LSL</span>
+      <span><i class="lg-line" style="border-color:transparent;border-top:8px solid var(--zone);width:14px"></i>기준 구간</span>
+      <span><i class="lg-line" style="border-color:var(--accent);border-top-style:dashed"></i>추세 예측 (이탈 예고)</span>
+    </div>
+    <div class="limits" id="limits"></div>
+  </section>
+
+  <section class="panel" id="lotDetail" hidden></section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>LOT별 검사 결과 <span class="note">· 행을 누르면 LOT 상세 · <span style="box-shadow:inset 0 -3px 0 var(--warn)">주황 밑줄</span> = 추세·치우침 진행 중(판정 전)</span></h2>
+      <div class="seg" role="group" aria-label="표시 범위">
+        <button type="button" id="fAll" aria-pressed="true">전체</button>
+        <button type="button" id="fBad" aria-pressed="false">이상 lot만</button>
+      </div>
+    </div>
+    <div class="table-wrap"><table id="tbl"></table></div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>데이터 넣기</h2>
+      <span class="note">엑셀에서 CSV로 저장한 내용을 붙여넣거나 파일을 올리면 바로 다시 계산합니다</span>
+    </div>
+    <div class="grid2">
+      <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+        <textarea id="csvIn" placeholder="lot,date,순도(%),입도 D50(㎛) ..." aria-label="CSV 붙여넣기"></textarea>
+        <div class="controls">
+          <button class="btn primary" type="button" id="applyCsv">붙여넣은 데이터 적용</button>
+          <label class="btn" for="fileIn" style="cursor:pointer">CSV 파일 올리기</label>
+          <input type="file" id="fileIn" accept=".csv,text/csv" hidden>
+          <button class="btn" type="button" id="resetBtn">예시 데이터로 되돌리기</button>
+        </div>
+        <div class="msg" id="msg" role="status"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+        <div class="eyebrow">CSV 형식</div>
+        <pre class="fmt">lot,date,색좌표 CIE x,색좌표 CIE y,순도(%),입도 D50(㎛)
+PG-261101,2026-11-01,0.4502,0.5348,99.951,5.01
+PG-261102,2026-11-02,0.4497,0.5353,99.948,4.97</pre>
+        <div class="eyebrow">이상 판정 규칙</div>
+        <ul class="rules">
+          <li><b>이탈</b> · 관리한계(±3σ) 밖 1점, 또는 규격 밖</li>
+          <li><b>주의</b> · 중심선 한쪽에 연속 7점 (공정 평균이 옮겨감)</li>
+          <li><b>주의</b> · 연속 6점 상승 또는 하강 (추세)</li>
+        </ul>
+        <div class="note">σ는 이동범위(MR) 평균 ÷ 1.128로 추정합니다 (I-MR 관리도).</div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+/* ---------- 예시 데이터 ---------- */
+const SAMPLE_ITEMS=[
+  // 색좌표: ㈜포스포 홈페이지의 "고객 요청에 따른 색좌표 맞춤 제작"을 반영한 핵심 품질 항목 (규격값은 가설)
+  {key:'cie_x',name:'색좌표 CIE x',unit:'',dec:4,lsl:0.4460,usl:0.4540,hint:'형광체 배합비·활성제 투입량과 소성 분위기(가스 유량)를 확인하세요. 고객 맞춤 색좌표 항목이라 이탈 전에 조치가 필요합니다.'},
+  {key:'cie_y',name:'색좌표 CIE y',unit:'',dec:4,lsl:0.5310,usl:0.5390,hint:'형광체 배합비와 소성 온도 프로파일을 확인하세요.'},
+  {key:'purity',name:'순도',unit:'%',dec:3,lsl:99.90,usl:null,hint:'원료 lot 성적서와 정제(세정·여과) 조건을 확인하세요.'},
+  {key:'d50',name:'입도 D50',unit:'㎛',dec:2,lsl:4.60,usl:5.40,hint:'분쇄 시간·볼 마모 상태와 분급기 설정을 점검하세요.'},
+  {key:'moisture',name:'수분',unit:'ppm',dec:0,lsl:null,usl:200,hint:'건조 온도·시간과 포장실 습도 기록을 확인하세요.'},
+  {key:'bright',name:'상대휘도',unit:'%',dec:1,lsl:97.0,usl:null,hint:'소성 온도 프로파일과 활성제 투입량을 확인하세요.'}
+];
+function makeSample(){
+  let s=20261118;
+  const r=()=>{s=(s*1664525+1013904223)%4294967296;return s/4294967296};
+  const g=()=>{let u=0;while(!u)u=r();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*r())};
+  // 색좌표는 별도 난수열을 써서 기존 항목(순도·입도·수분·휘도) 예시 값이 바뀌지 않게 함
+  let s2=46032026;
+  const r2=()=>{s2=(s2*1664525+1013904223)%4294967296;return s2/4294967296};
+  const g2=()=>{let u=0;while(!u)u=r2();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*r2())};
+  const rows=[];const start=new Date(Date.UTC(2026,9,27));
+  for(let i=0;i<30;i++){
+    const d=new Date(start.getTime()+i*86400000);
+    const ds=d.toISOString().slice(0,10);
+    const lot='PG-'+ds.slice(2,4)+ds.slice(5,7)+ds.slice(8,10);
+    let purity=99.950+g()*0.008;
+    let d50=4.98+g()*0.05;
+    let moisture=118+g()*5;
+    let bright=100.2+g()*0.6;
+    if(i===16) purity=99.905;                       // 순도 급락 (원료 문제 시나리오)
+    if(i>=20&&i<=27) moisture=125+g()*2;          // 수분 평균 이동 (건조기 시나리오)
+    if(i>=24) d50=5.00+(i-24)*0.024+g()*0.003;      // 입도 상승 추세 (분쇄 마모 시나리오)
+    let cx=0.4500+g2()*0.0010, cy=0.5350+g2()*0.0006;
+    if(i>=23) cx=0.4500+(i-22)*0.0003+g2()*0.0001;  // 색좌표 x 서서히 상승: 규격 안이지만 곧 상한 도달 (이탈 예고 시나리오)
+    rows.push({lot,date:ds,v:{cie_x:+cx.toFixed(4),cie_y:+cy.toFixed(4),purity:+purity.toFixed(3),d50:+d50.toFixed(2),moisture:Math.round(moisture),bright:+bright.toFixed(1)}});
+  }
+  return rows;
+}
+
+/* ---------- 상태 ---------- */
+let ITEMS=SAMPLE_ITEMS, ROWS=makeSample(), isSample=true;
+let active=0, baseN=15, onlyBad=false, selLot=null;
+try{const t=localStorage.getItem('lotqc.tab');if(t!==null)active=+t||0}catch(e){}
+
+/* ---------- 분석 ---------- */
+function analyze(item){
+  const vals=ROWS.map(r=>r.v[item.key]);
+  const n=Math.min(baseN,vals.length);
+  const base=vals.slice(0,n).filter(Number.isFinite);
+  const mean=base.reduce((a,b)=>a+b,0)/base.length;
+  let mrs=[];for(let i=1;i<base.length;i++)mrs.push(Math.abs(base[i]-base[i-1]));
+  const mrbar=mrs.length?mrs.reduce((a,b)=>a+b,0)/mrs.length:0;
+  const sigma=mrbar/1.128;
+  const ucl=mean+3*sigma, lcl=mean-3*sigma;
+  const flags=vals.map(()=>[]);
+  vals.forEach((v,i)=>{
+    if(!Number.isFinite(v))return;
+    if(v>ucl)flags[i].push({c:'R1',sev:'bad',t:'상한 관리한계 이탈'});
+    if(v<lcl)flags[i].push({c:'R1',sev:'bad',t:'하한 관리한계 이탈'});
+    if(item.usl!=null&&v>item.usl)flags[i].push({c:'SPEC',sev:'bad',t:'규격 상한 초과'});
+    if(item.lsl!=null&&v<item.lsl)flags[i].push({c:'SPEC',sev:'bad',t:'규격 하한 미달'});
+  });
+  // 연속 7점 한쪽
+  const runs=[];let side=0,len=0,st=0;
+  vals.forEach((v,i)=>{const s=v>mean?1:v<mean?-1:0;
+    if(s!==0&&s===side){len++}else{ if(len>=7)runs.push({a:st,b:i-1,side}); side=s;len=s?1:0;st=i}
+  });
+  if(len>=7)runs.push({a:st,b:vals.length-1,side});
+  runs.forEach(rn=>{for(let i=rn.a+6;i<=rn.b;i++)flags[i].push({c:'R2',sev:'warn',t:'중심선 '+(rn.side>0?'위':'아래')+' 연속 '+(i-rn.a+1)+'점'})});
+  // 연속 6점 상승/하강
+  const trends=[];let dir=0,tl=1,ts=0;
+  for(let i=1;i<vals.length;i++){const d=vals[i]>vals[i-1]?1:vals[i]<vals[i-1]?-1:0;
+    if(d!==0&&d===dir){tl++}else{ if(tl>=6)trends.push({a:ts,b:i-1,dir}); dir=d;tl=d?2:1;ts=i-1}}
+  if(tl>=6)trends.push({a:ts,b:vals.length-1,dir});
+  trends.forEach(tr=>{for(let i=tr.a+5;i<=tr.b;i++)flags[i].push({c:'R3',sev:'warn',t:'연속 '+(i-tr.a+1)+'점 '+(tr.dir>0?'상승':'하강')})});
+  // 공정능력 Cpk
+  let cpk=null;
+  if(sigma>0){const c=[];if(item.usl!=null)c.push((item.usl-mean)/(3*sigma));if(item.lsl!=null)c.push((mean-item.lsl)/(3*sigma));if(c.length)cpk=Math.min(...c)}
+  const sev=flags.some(f=>f.some(x=>x.sev==='bad'))?'bad':flags.some(f=>f.length)?'warn':'ok';
+  return {vals,n,mean,sigma,ucl,lcl,flags,runs,trends,cpk,sev};
+}
+/* 이탈 예고: 최근 5 lot 기울기로 "몇 lot 뒤 규격 도달"을 계산
+   최근 1·2 lot 변화가 모두 같은 방향일 때만 예고 (튀는 값 하나로 생기는 오경보 방지) */
+function forecastItem(item,r){
+  const idx=[];for(let i=r.vals.length-1;i>=0&&idx.length<5;i--)if(Number.isFinite(r.vals[i]))idx.unshift(i);
+  if(idx.length<5)return null;
+  const ys=idx.map(i=>r.vals[i]),ym=ys.reduce((a,b)=>a+b,0)/5;
+  let sxy=0,sxx=0;ys.forEach((y,k)=>{sxy+=(k-2)*(y-ym);sxx+=(k-2)*(k-2)});
+  const slope=sxy/sxx;if(!slope)return null;
+  const dir=slope>0?1:-1,lim=dir>0?item.usl:item.lsl;if(lim==null)return null;
+  const last=ys[4];if(dir>0?last>=lim:last<=lim)return null;          // 이미 규격 밖이면 예고가 아니라 이탈
+  if(Math.sign(ys[4]-ys[3])!==dir||Math.sign(ys[4]-ys[2])!==dir)return null;
+  const fitted=ym+slope*2,lots=Math.max(1,Math.ceil((lim-fitted)/slope-1e-9));
+  let eta=null;const t0=Date.parse(ROWS[idx[0]].date),t1=Date.parse(ROWS[idx[4]].date);
+  if(Number.isFinite(t0)&&Number.isFinite(t1)&&t1>t0)eta=new Date(t1+(t1-t0)/4*lots).toISOString().slice(0,10);
+  return {lots,lim,dir,slope,fitted,last,lastIdx:idx[4],eta};
+}
+const FC_MAX=10; // 이 lot 수 이내로 규격 도달이 예상되면 '예고'
+let RES=[];
+function recompute(){RES=ITEMS.map(it=>{const r=analyze(it);r.fc=forecastItem(it,r);return r})}
+
+/* ---------- 유틸 ---------- */
+const $=id=>document.getElementById(id);
+const fmt=(v,d)=>Number.isFinite(v)?v.toFixed(d):'–';
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function lotSev(i){let s='ok';RES.forEach(r=>r.flags[i].forEach(f=>{if(f.sev==='bad')s='bad';else if(s!=='bad')s='warn'}));return s}
+
+/* ---------- 렌더 ---------- */
+function renderStats(){
+  const sev=ROWS.map((_,i)=>lotSev(i));
+  const bad=sev.filter(s=>s==='bad').length, warn=sev.filter(s=>s==='warn').length;
+  const d0=ROWS[0]?.date||'', d1=ROWS[ROWS.length-1]?.date||'';
+  $('stats').innerHTML=
+    `<div class="stat"><span class="v">${ROWS.length}</span><span class="l">검사 lot · ${esc(d0.slice(5))} ~ ${esc(d1.slice(5))}</span></div>`+
+    `<div class="stat bad"><span class="v">${bad}</span><span class="l">이탈 lot</span></div>`+
+    `<div class="stat warn"><span class="v">${warn}</span><span class="l">주의 lot (추세·치우침)</span></div>`+
+    `<div class="stat ok"><span class="v">${ROWS.length-bad-warn}</span><span class="l">정상 lot</span></div>`;
+}
+const fcText=(it,fc)=>`지금 속도면 <b>약 ${fc.lots} lot 뒤${fc.eta?`(${esc(fc.eta.slice(5))}경)`:''}</b> 규격 ${fc.dir>0?'상한':'하한'}(${fmt(fc.lim,it.dec)})에 닿을 것으로 예상됩니다.`;
+function renderSummary(){
+  const out=[];
+  ITEMS.forEach((it,k)=>{const r=RES[k];let fcUsed=false;
+    // 관리한계·규격 이탈: 같은 항목에서 연달아 나온 lot은 한 줄로 묶음
+    const badIdx=[];r.flags.forEach((f,i)=>{if(f.some(x=>x.c==='R1'||x.c==='SPEC'))badIdx.push(i)});
+    const groups=[];badIdx.forEach(i=>{const g=groups[groups.length-1];if(g&&g.b===i-1)g.b=i;else groups.push({a:i,b:i})});
+    groups.forEach(g=>{const i=g.b,v=r.vals[i],b=r.flags[i].filter(x=>x.c==='R1'||x.c==='SPEC');
+      const lim=b.some(x=>x.t.includes('하한'))?`LCL ${fmt(r.lcl,it.dec)}`:`UCL ${fmt(r.ucl,it.dec)}`;
+      const spec=b.some(x=>x.c==='SPEC');
+      let html=g.a===g.b?`<b>${esc(it.name)}</b> · ${esc(ROWS[i].lot)}에서 ${esc(b.map(x=>x.t).join(', '))} <span class="num">(${fmt(v,it.dec)}${esc(it.unit)}, ${lim})</span>`
+        :`<b>${esc(it.name)}</b> · ${esc(ROWS[g.a].lot)} ~ ${esc(ROWS[g.b].lot)} ${g.b-g.a+1}개 lot 연속 ${esc(b.map(x=>x.t).join(', '))} <span class="num">(최근 ${fmt(v,it.dec)}${esc(it.unit)}, ${lim})</span>`;
+      if(!spec&&r.fc&&r.fc.lastIdx===i&&r.fc.lots<=FC_MAX){html+=` 아직 규격 안입니다. ${fcText(it,r.fc)}`;fcUsed=true}
+      out.push({sev:'bad',k,i,html,act:it.hint})});
+    r.runs.forEach(rn=>out.push({sev:'warn',k,i:rn.b,html:`<b>${esc(it.name)}</b> · ${esc(ROWS[rn.a].lot)} ~ ${esc(ROWS[rn.b].lot)} ${rn.b-rn.a+1}개 lot이 모두 중심선 ${rn.side>0?'위':'아래'}. 공정 평균이 ${rn.side>0?'올라간':'내려간'} 것으로 보입니다. <span class="note">(7번째 lot부터 '주의' 판정)</span>`,act:it.hint}));
+    r.trends.forEach(tr=>{const last=r.vals[tr.b];let gap='';
+      const lim=tr.dir>0?it.usl:it.lsl;
+      if(lim!=null)gap=` 규격 ${tr.dir>0?'상한':'하한'}(${fmt(lim,it.dec)})까지 <span class="num">${fmt(Math.abs(lim-last),it.dec)}${esc(it.unit)}</span> 남았습니다.`;
+      if(r.fc&&r.fc.lots>FC_MAX&&r.fc.lastIdx===tr.b&&r.fc.dir===tr.dir)gap+=' '+fcText(it,r.fc); // 먼 예측은 추세 문장에 덧붙이고, 가까운 예측은 아래 '예고' 줄로 따로
+      out.push({sev:'warn',k,i:tr.b,html:`<b>${esc(it.name)}</b> · ${esc(ROWS[tr.a].lot)}부터 ${tr.b-tr.a+1}개 lot 연속 ${tr.dir>0?'상승':'하강'}, 최근값 <span class="num">${fmt(last,it.dec)}${esc(it.unit)}</span>.${gap} ${(last<r.ucl&&last>r.lcl)?' 아직 관리한계 안이지만 미리 확인할 신호입니다.':''} <span class="note">(6번째 lot부터 '주의' 판정)</span>`,act:it.hint})});
+    // 다른 신호에 묶이지 않은 예고는 따로 한 줄
+    if(!fcUsed&&r.fc&&r.fc.lots<=FC_MAX)out.push({sev:'pre',k,i:r.fc.lastIdx,html:`<b>${esc(it.name)}</b> · 최근값 <span class="num">${fmt(r.fc.last,it.dec)}${esc(it.unit)}</span>. ${fcText(it,r.fc)}`,act:it.hint});
+  });
+  const RK={bad:0,pre:1,warn:2};
+  out.sort((a,b)=>RK[a.sev]-RK[b.sev]||b.i-a.i);
+  if(!out.length){$('summary').innerHTML=`<li><span class="pill ok">정상</span><span class="txt">모든 항목이 관리상태입니다. 이상 신호가 없습니다.</span></li>`;return}
+  $('summary').innerHTML=out.map(o=>`<li><span class="pill ${o.sev}">${o.sev==='bad'?'이탈':o.sev==='pre'?'예고':'주의'}</span><span class="txt">${o.html}<span class="act">점검 포인트: ${esc(o.act||'해당 공정 조건 기록을 확인하세요.')}</span></span></li>`).join('');
+}
+function renderTabs(){
+  $('tabs').innerHTML=ITEMS.map((it,k)=>`<button class="tab" role="tab" type="button" id="tab-${k}" aria-selected="${k===active}" data-k="${k}"><i class="dot ${RES[k].sev}"></i>${esc(it.name)}${it.unit?` <span class="note">(${esc(it.unit)})</span>`:''}</button>`).join('');
+  $('tabs').querySelectorAll('.tab').forEach(b=>b.onclick=()=>{active=+b.dataset.k;try{localStorage.setItem('lotqc.tab',active)}catch(e){};renderTabs();renderChart()});
+}
+function renderChart(){
+  const it=ITEMS[active], r=RES[active];
+  const W=860,H=320,L=64,R=16,T=18,B=46;
+  const vals=r.vals, n=vals.length;
+  const fc=(r.fc&&r.fc.lots<=FC_MAX)?r.fc:null, extra=fc?fc.lots:0, N=n+extra; // 예고가 있으면 오른쪽에 예측 구간을 둠
+  const cand=[...vals.filter(Number.isFinite),r.ucl,r.lcl];
+  if(it.usl!=null)cand.push(it.usl); if(it.lsl!=null)cand.push(it.lsl);
+  let lo=Math.min(...cand),hi=Math.max(...cand);const pad=(hi-lo)*0.08||1;lo-=pad;hi+=pad;
+  const x=i=>L+(N<=1?0:(i*(W-L-R)/(N-1)));
+  const y=v=>T+(hi-v)*(H-T-B)/(hi-lo);
+  // ticks
+  const step=niceStep((hi-lo)/5);const t0=Math.ceil(lo/step)*step;let ticks=[];for(let v=t0;v<=hi+1e-9;v+=step)ticks.push(v);
+  const tdec=Math.max(0,-Math.floor(Math.log10(step)+1e-9));
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(it.name)} 관리도">`;
+  s+=`<rect x="${L}" y="${T}" width="${x(Math.min(r.n,n)-1)-L+ (N>1?(W-L-R)/(N-1)/2:0)}" height="${H-T-B}" fill="var(--zone)"/>`;
+  if(fc)s+=`<rect x="${x(fc.lastIdx)+6}" y="${T}" width="${Math.max(0,x(fc.lastIdx+extra)-x(fc.lastIdx)-6)}" height="${H-T-B}" fill="var(--accent-soft)" opacity=".55"/><text x="${(x(fc.lastIdx)+x(fc.lastIdx+extra))/2}" y="${H-B+18}" text-anchor="middle" font-size="10.5" font-weight="600" fill="var(--accent)">예측 구간</text>`;
+  ticks.forEach(v=>{s+=`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${L-8}" y="${y(v)+4}" text-anchor="end" font-size="11" fill="var(--muted)" font-family="var(--f-mono)">${v.toFixed(tdec)}</text>`});
+  const hline=(v,col,dash,label)=>{if(v==null||!Number.isFinite(v))return'';return `<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="${col}" stroke-width="1.5" ${dash?`stroke-dasharray="${dash}"`:''}/><text x="${W-R-4}" y="${y(v)-5}" text-anchor="end" font-size="11" font-weight="600" fill="${col}" font-family="var(--f-mono)">${label} ${v.toFixed(it.dec)}</text>`};
+  s+=hline(it.usl,'var(--spec)','2 4','USL')+hline(it.lsl,'var(--spec)','2 4','LSL');
+  s+=hline(r.ucl,'var(--bad)','6 4','UCL')+hline(r.lcl,'var(--bad)','6 4','LCL')+hline(r.mean,'var(--muted)','','CL');
+  // line
+  let d='';vals.forEach((v,i)=>{if(Number.isFinite(v))d+=(d?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)});
+  s+=`<path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>`;
+  if(fc){const x0=x(fc.lastIdx),y0=y(fc.fitted),x1=x(fc.lastIdx+extra),y1=y(fc.lim);
+    s+=`<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" stroke="var(--accent)" stroke-width="2" stroke-dasharray="5 4"/><circle cx="${x1}" cy="${y1}" r="5" fill="var(--surface)" stroke="var(--accent)" stroke-width="2"/>`+
+      `<text x="${x0+12}" y="${(y(r.mean)+y(fc.dir>0?r.lcl:r.ucl))/2+4}" text-anchor="start" font-size="11" font-weight="700" fill="var(--accent)">약 ${fc.lots} lot 뒤 규격 도달 예상</text>`}
+  // x labels
+  const every=Math.ceil(n/10);
+  ROWS.forEach((row,i)=>{const last=i===n-1;if((i%every===0&&(n-1-i)>=every*0.7)||last)s+=`<text x="${x(i)}" y="${H-B+18}" text-anchor="${last?'end':'middle'}" font-size="10.5" fill="var(--muted)" font-family="var(--f-mono)">${esc(row.lot.length>9?row.lot.slice(-6):row.lot)}</text>`});
+  s+=`<text x="${L}" y="${H-6}" font-size="11" fill="var(--muted)">LOT 순서 →</text>`;
+  // points
+  vals.forEach((v,i)=>{if(!Number.isFinite(v))return;const f=r.flags[i];const sev=f.some(z=>z.sev==='bad')?'bad':f.length?'warn':'ok';
+    const col=sev==='bad'?'var(--bad)':sev==='warn'?'var(--warn)':'var(--accent)';const rad=sev==='ok'?3.5:5.5;
+    const sel=ROWS[i].lot===selLot;
+    s+=`<circle class="pt" cx="${x(i)}" cy="${y(v)}" r="${sel?7:rad}" fill="${sev==='ok'?'var(--surface)':col}" stroke="${col}" stroke-width="2" data-i="${i}" style="cursor:pointer"/>`});
+  s+=`</svg>`;
+  const box=$('chartBox');const tip=$('tip');
+  box.innerHTML=s;box.appendChild(tip);tip.hidden=true;
+  const svg=box.querySelector('svg');
+  svg.querySelectorAll('circle').forEach(c=>{
+    c.addEventListener('mouseenter',()=>{const i=+c.dataset.i;const f=r.flags[i];
+      tip.innerHTML=`<b>${esc(ROWS[i].lot)}</b> · ${esc(ROWS[i].date)}<br><span class="num">${fmt(vals[i],it.dec)} ${esc(it.unit)}</span>${f.length?'<br>'+f.map(z=>esc(z.t)).join('<br>'):''}`;
+      const bb=svg.getBoundingClientRect(),cb=c.getBoundingClientRect(),xb=box.getBoundingClientRect();
+      tip.style.left=(cb.left-xb.left+box.scrollLeft+cb.width/2)+'px';tip.style.top=(cb.top-xb.top)+'px';tip.hidden=false});
+    c.addEventListener('mouseleave',()=>tip.hidden=true);
+    c.addEventListener('click',()=>selectLot(ROWS[+c.dataset.i].lot,true));
+  });
+  const cpkTxt=r.cpk==null?'–':r.cpk.toFixed(2);
+  const cpkCls=r.cpk==null?'':r.cpk>=1.33?'color:var(--ok)':r.cpk>=1?'color:var(--warn)':'color:var(--bad)';
+  $('limits').innerHTML=[['CL (평균)',fmt(r.mean,it.dec+1)],['UCL',fmt(r.ucl,it.dec+1)],['LCL',fmt(r.lcl,it.dec+1)],['σ (MR/1.128)',fmt(r.sigma,it.dec+1)],
+    ['규격',`${it.lsl!=null?fmt(it.lsl,it.dec):'–'} ~ ${it.usl!=null?fmt(it.usl,it.dec):'–'}`],['Cpk',`<span style="${cpkCls}">${cpkTxt}</span>`]]
+    .map(([k,v])=>`<div><div class="k">${k}</div><div class="val">${v}</div></div>`).join('');
+}
+function niceStep(x){const p=Math.pow(10,Math.floor(Math.log10(x)));const m=x/p;return (m<1.5?1:m<3?2:m<7?5:10)*p}
+function renderTable(){
+  let h=`<thead><tr><th>LOT</th><th>검사일</th>${ITEMS.map(it=>`<th>${esc(it.name)}${it.unit?` (${esc(it.unit)})`:''}</th>`).join('')}<th>판정</th></tr></thead><tbody>`;
+  const idx=ROWS.map((_,i)=>i).reverse().filter(i=>!onlyBad||lotSev(i)!=='ok');
+  // 추세·치우침이 시작됐지만 아직 '주의' 판정 전인 lot (요약 문장과 표 판정이 엇갈려 보이지 않게)
+  const zone=RES.map(r=>{const z=new Set();r.runs.concat(r.trends).forEach(g=>{for(let i=g.a;i<=g.b;i++)z.add(i)});return z});
+  idx.forEach(i=>{const row=ROWS[i];const sv=lotSev(i);
+    h+=`<tr data-lot="${esc(row.lot)}" class="${row.lot===selLot?'sel':''}"><td class="mono">${esc(row.lot)}</td><td class="mono">${esc(row.date)}</td>`;
+    ITEMS.forEach((it,k)=>{const f=RES[k].flags[i];const c=f.some(z=>z.sev==='bad')?'c-bad':f.length?'c-warn':zone[k].has(i)?'c-zone':'';
+      const tt=f.length?f.map(z=>z.t).join(', '):zone[k].has(i)?'추세·치우침 진행 중 (아직 판정 기준 전)':'';
+      h+=`<td class="num ${c}" title="${esc(tt)}">${fmt(row.v[it.key],it.dec)}</td>`});
+    h+=`<td><span class="pill ${sv}">${sv==='bad'?'이탈':sv==='warn'?'주의':'정상'}</span></td></tr>`});
+  if(!idx.length)h+=`<tr><td colspan="${ITEMS.length+3}" style="text-align:center;color:var(--muted)">이상 lot이 없습니다.</td></tr>`;
+  $('tbl').innerHTML=h+'</tbody>';
+  $('tbl').querySelectorAll('tbody tr[data-lot]').forEach(tr=>tr.onclick=()=>selectLot(tr.dataset.lot,true));
+}
+function selectLot(lot,scroll){
+  selLot=lot;renderChart();renderTable();renderDetail();
+  if(scroll){const d=$('lotDetail');if(d&&!d.hidden)d.scrollIntoView({block:'nearest',behavior:'smooth'})}
+}
+/* LOT 상세: 한 lot의 모든 검사 항목 값·규격·관리한계·판정 이유를 한 번에 */
+function renderDetail(){
+  const box=$('lotDetail'),i=ROWS.findIndex(r=>r.lot===selLot);
+  if(i<0){box.hidden=true;return}
+  box.hidden=false;
+  const row=ROWS[i],sv=lotSev(i),acts=[];
+  const cards=ITEMS.map((it,k)=>{const r=RES[k],f=r.flags[i],v=row.v[it.key];
+    const fc=r.fc&&r.fc.lastIdx===i&&r.fc.lots<=FC_MAX?r.fc:null;
+    const c=f.some(z=>z.sev==='bad')?'bad':f.length?'warn':fc?'pre':'ok';
+    if(c!=='ok'&&it.hint)acts.push(`<li><b>${esc(it.name)}</b>: ${esc(it.hint)}</li>`);
+    const why=f.map(z=>esc(z.t)).concat(fc?[`약 ${fc.lots} lot 뒤 규격 ${fc.dir>0?'상한':'하한'} 도달 예상`]:[]);
+    return `<div class="lot-card ${c}"><div class="nm">${esc(it.name)}<span class="pill ${c}">${c==='bad'?'이탈':c==='warn'?'주의':c==='pre'?'예고':'정상'}</span></div>`+
+      `<div class="vv">${fmt(v,it.dec)} <span class="sm">${esc(it.unit)}</span></div>`+
+      `<div class="sm">규격 ${it.lsl!=null?fmt(it.lsl,it.dec):'–'} ~ ${it.usl!=null?fmt(it.usl,it.dec):'–'} · 관리한계 ${fmt(r.lcl,it.dec)} ~ ${fmt(r.ucl,it.dec)}</div>`+
+      (why.length?`<div class="sm" style="color:var(--fg)">${why.join(' · ')}</div>`:'')+`</div>`}).join('');
+  box.innerHTML=`<div class="panel-head"><h2>LOT 상세 · <span class="mono">${esc(row.lot)}</span> <span class="note">${esc(row.date)}</span> <span class="pill ${sv}">${sv==='bad'?'이탈':sv==='warn'?'주의':'정상'}</span></h2><button class="btn" type="button" id="closeDetail">닫기</button></div>`+
+    `<div class="lot-grid">${cards}</div>`+(acts.length?`<div style="margin-top:12px"><div class="eyebrow">이 lot의 점검 포인트</div><ul class="rules" style="color:var(--fg)">${acts.join('')}</ul></div>`:'');
+  $('closeDetail').onclick=()=>{selLot=null;renderChart();renderTable();renderDetail()};
+}
+/* 관리한계는 앞쪽 '기준 구간'으로 고정. 전체 lot을 쓰면 이상 lot까지 섞여 한계가 넓어지므로 lot이 충분하면 선택지에서 뺌 */
+function renderBaseSel(){
+  const opts=[10,15,20].filter(v=>v<ROWS.length);if(!opts.length)opts.push(ROWS.length);
+  if(!opts.includes(baseN))baseN=opts.includes(15)?15:opts[opts.length-1];
+  $('baseN').innerHTML=opts.map(v=>`<option value="${v}" ${v===baseN?'selected':''}>${v===ROWS.length?'전체 '+v:'처음 '+v}개 lot</option>`).join('');
+}
+function renderBaseNote(){
+  const n=Math.min(baseN,ROWS.length),hit=[];
+  for(let i=0;i<n;i++)ITEMS.forEach((it,k)=>{if(RES[k].flags[i].some(x=>x.c==='R1'||x.c==='SPEC'))hit.push(ROWS[i].lot+' '+it.name)});
+  const box=$('baseNote');
+  box.hidden=!hit.length;
+  if(hit.length)box.textContent=`⚠️ 기준 구간 안에 이탈 lot이 있습니다 (${[...new Set(hit)].slice(0,3).join(', ')}${hit.length>3?' 등':''}). 관리한계가 넓어져 이상을 늦게 잡을 수 있으니, 안정적이던 더 짧은 구간을 고르세요.`;
+}
+function renderAll(){
+  if(active>=ITEMS.length)active=0;
+  renderBaseSel();recompute();renderBaseNote();renderStats();renderSummary();renderTabs();renderChart();renderTable();renderDetail();
+  $('dataTag').hidden=!isSample;
+  $('subline').textContent=isSample?'형광소재 분말 · 배치(lot)별 품질검사 결과 추세 대시보드':'업로드한 데이터 · 배치(lot)별 품질검사 결과 추세';
+}
+
+/* ---------- CSV ---------- */
+function parseCsv(text){
+  const lines=text.replace(/^﻿/,'').split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  if(lines.length<4)throw new Error('lot이 최소 3개는 있어야 관리도를 그릴 수 있습니다. 머리글 줄 포함 4줄 이상 넣어 주세요.');
+  const sep=lines[0].includes('\t')?'\t':',';
+  const head=lines[0].split(sep).map(s=>s.trim());
+  if(head.length<3)throw new Error('열이 부족합니다. lot, 날짜, 측정항목 1개 이상이 필요합니다.');
+  const items=head.slice(2).map((h,k)=>{const m=h.match(/^(.*?)\s*\((.*)\)\s*$/);
+    const known=SAMPLE_ITEMS.find(s=>(m?m[1]:h).replace(/\s/g,'')===s.name.replace(/\s/g,''));
+    return {key:'c'+k,name:m?m[1]:h,unit:m?m[2]:'',dec:2,lsl:known?known.lsl:null,usl:known?known.usl:null,hint:known?known.hint:''}});
+  const rows=lines.slice(1).map((l,ri)=>{const c=l.split(sep).map(s=>s.trim());const v={};
+    items.forEach((it,k)=>{const x=parseFloat(c[k+2]);v[it.key]=Number.isFinite(x)?x:NaN});
+    return {lot:c[0]||('행'+(ri+2)),date:c[1]||'',v}});
+  items.forEach(it=>{let d=0;rows.forEach(r=>{const s=String(r.v[it.key]);const p=s.split('.')[1];if(p)d=Math.max(d,p.length)});it.dec=Math.min(d,4)});
+  const bad=items.find(it=>rows.filter(r=>Number.isFinite(r.v[it.key])).length<3);
+  if(bad)throw new Error(`"${bad.name}" 열에 숫자가 3개 미만입니다. 숫자 형식을 확인해 주세요.`);
+  return {items,rows};
+}
+function loadCsv(text){
+  try{const p=parseCsv(text);ITEMS=p.items;ROWS=p.rows;isSample=false;selLot=null;active=0;baseN=Math.min(15,ROWS.length);
+    renderAll();$('msg').className='msg okm';$('msg').textContent=`${ROWS.length}개 lot, ${ITEMS.length}개 항목을 불러왔습니다.`}
+  catch(e){$('msg').className='msg err';$('msg').textContent=e.message}
+}
+$('applyCsv').onclick=()=>loadCsv($('csvIn').value);
+$('fileIn').onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{$('csvIn').value=rd.result;loadCsv(rd.result)};rd.readAsText(f,'utf-8');e.target.value=''};
+$('resetBtn').onclick=()=>{ITEMS=SAMPLE_ITEMS;ROWS=makeSample();isSample=true;selLot=null;baseN=15;renderAll();$('msg').className='msg';$('msg').textContent='예시 데이터로 되돌렸습니다.';fillSampleCsv()};
+$('baseN').onchange=e=>{baseN=+e.target.value;renderAll()};
+$('fAll').onclick=()=>{onlyBad=false;$('fAll').setAttribute('aria-pressed','true');$('fBad').setAttribute('aria-pressed','false');renderTable()};
+$('fBad').onclick=()=>{onlyBad=true;$('fAll').setAttribute('aria-pressed','false');$('fBad').setAttribute('aria-pressed','true');renderTable()};
+function fillSampleCsv(){
+  $('csvIn').value=['lot,date,'+SAMPLE_ITEMS.map(i=>i.unit?`${i.name}(${i.unit})`:i.name).join(',')]
+    .concat(makeSample().map(r=>[r.lot,r.date,...SAMPLE_ITEMS.map(i=>r.v[i.key].toFixed(i.dec))].join(','))).join('\n');
+}
+fillSampleCsv();
+renderAll();
+window.__lotqc={RES:()=>RES,ROWS:()=>ROWS};
+})();
+</script>
+</body>
+</html>
