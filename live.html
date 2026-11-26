@@ -538,7 +538,7 @@ function renderSnd(){const b=$('sndBtn');if(!b)return;
    연결: 공개 MQTT 중계 서버 2곳(WebSocket)에 동시에 접속 → 어느 네트워크에서든, 전송 횟수 제한 없이 연결
    (한 곳이 끊겨도 다른 곳으로 받음, 같은 메시지는 한 번만 처리). 같은 브라우저의 다른 탭과는 BroadcastChannel.
    CCR은 열린 지시 목록을 '보관 메시지'로도 올려 두므로 나중에 접속한 휴대폰도 바로 받음.
-   CCR이 보낸 지시는 품질 알림보다 항상 먼저 보여 주고, 확인할 때까지 소리·진동으로 다시 알림 */
+   CCR이 보낸 지시는 품질 알림보다 항상 먼저 보여 주고, 도착할 때 한 번만 소리·진동으로 알림 */
 const TOPIC=new URLSearchParams(location.search).get('ch')||'lotwatch-hk08-q7m3x9';
 const MQ_BROKERS=['wss://broker.emqx.io:8084/mqtt','wss://broker.hivemq.com:8884/mqtt'],MQ_T='lotwatch/hk08/'+TOPIC;
 let MQ=[];
@@ -551,7 +551,7 @@ function busDeliver(m){if(!m||m._from===SELF)return;if(m._mid){if(seenMsg.has(m.
 let bcx=null;try{bcx=new BroadcastChannel('lotqc-process-v1');bcx.onmessage=e=>busDeliver(e.data)}catch(e){}
 async function busStart(){
   quietUntil=Date.now()+3000; // 접속 직후 지난 지시를 한꺼번에 받을 때는 소리를 한 번만 냄
-  setTimeout(()=>{const p=activeOrders().find(o=>o.status==='sent');if(p)notifyOrder(p,'repeat')},3300);
+  setTimeout(()=>{const p=activeOrders().find(o=>o.status==='sent');if(p)notifyOrder(p,'new')},3300); // 접속 전에 와 있던 지시 → 이 휴대폰에서는 처음 알림
   if(window.mqtt){busMode='cloud';busOk=false;
     const upd=()=>{const ok=MQ.some(c=>c.connected);if(ok!==busOk){busOk=ok;renderHome()}};
     MQ=MQ_BROKERS.map(u=>{try{
@@ -581,7 +581,8 @@ function onBus(m){
   ORDERS.set(k,o);
   if(Date.now()>quietUntil){
     if(!prev&&o.status==='sent')notifyOrder(o,'new');
-    else if(prev&&o.esc>(prev.esc||0)&&isOpen(o))notifyOrder(o,'esc');
+    // 상황 악화(긴급 전환)는 다시 울리지 않고, 떠 있는 알림 내용만 조용히 갱신
+    else if(prev&&ovKey===k&&o.status==='sent')showOv(o,ovKind||'new');
   }
   if(ovKey===k&&(o.status==='closed'||(o.status!=='sent'&&ovKind!=='esc')))hideOv();
   render();
@@ -598,7 +599,7 @@ function showOv(o,kind){
   ov.innerHTML=`<div class="k">${head} · ${esc(o.pri)}</div><div class="t">${esc(o.title)}</div>`+
     `<div class="v">${esc(o.zone)} 담당 · <span class="mono">${esc(o.tag)}</span> · 지시 ${esc(o.by||'CCR')} · ${hm(o.sentAt)}</div>`+
     `<div class="a">${esc(o.act)}</div>`+
-    (o.status==='sent'?`<button type="button" class="btn primary" data-ovack>확인 · 출동</button><button type="button" class="btn ghost" data-ovclose>나중에 보기 (계속 다시 알림)</button>`:`<button type="button" class="btn primary" data-ovclose>확인</button>`);
+    (o.status==='sent'?`<button type="button" class="btn primary" data-ovack>확인 · 출동</button><button type="button" class="btn ghost" data-ovclose>나중에 보기</button>`:`<button type="button" class="btn primary" data-ovclose>확인</button>`);
   ov.hidden=false;
 }
 function hideOv(){$('ov').hidden=true;ovKey=null}
@@ -788,10 +789,7 @@ $('simClose').onclick=()=>$('sim').classList.remove('open');
 setInterval(updLive,1000);
 $('ov').addEventListener('click',e=>{if(e.target.closest('[data-ovack]'))return ackOrder(ovKey);if(e.target.closest('[data-ovclose]'))hideOv()});
 $('sndBtn').onclick=()=>{if(!audioOn){unlockAudio();muted=false;setTimeout(()=>playSnd('test'),150);try{navigator.vibrate&&navigator.vibrate(80)}catch(e){}}else muted=!muted;renderSnd()};
-// 미확인 작업 지시 다시 알림: 긴급 12초, 일반 30초 간격 (확인·출동을 누를 때까지)
-setInterval(()=>{const now=Date.now();
-  for(const o of ORDERS.values()){if(o.status!=='sent')continue;
-    if(now-(lastOrderAlert[okey(o)]||0)>(o.pri==='긴급'?12000:30000)){notifyOrder(o,'repeat');break}}},1000);
+// 다시 알림 없음: 지시 하나당 알림은 도착할 때 한 번만 (미확인 지시는 홈·알림 탭 맨 위에 계속 표시)
 setInterval(hb,15000);
 // 화면이 꺼지지 않게 (지원하는 브라우저만)
 try{if('wakeLock' in navigator){const req=()=>navigator.wakeLock.request('screen').catch(()=>{});document.addEventListener('pointerdown',req,{once:true});document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')req()})}}catch(e){}

@@ -284,7 +284,7 @@ h1,h2,h3,h4{margin:0;text-wrap:balance}
       <section class="duty" aria-label="역할 분담">
         <div><span class="who">시스템</span><b>① 감지·권고</b><span>DCS 값에서 이상 조짐을 찾아 조치안 제시</span></div>
         <div class="c"><span class="who">CCR</span><b>② 판단·승인</b><span>지시 여부·내용·담당·우선순위 결정</span></div>
-        <div><span class="who">시스템</span><b>③ 현장 전달</b><span>담당 단말에 진동·소리, 미응답 시 재알림</span></div>
+        <div><span class="who">시스템</span><b>③ 현장 전달</b><span>담당 단말·알림 앱에 진동·소리로 한 번 알림</span></div>
         <div><span class="who">작업자</span><b>④ 조치·보고</b><span>확인·출동 → 완료 보고</span></div>
         <div class="c"><span class="who">CCR</span><b>⑤ 확인·종료</b><span>DCS 값 회복을 보고 종료</span></div>
         <p class="duty-note"><b>운전 조작(설정값 변경 등)은 DCS에서만</b> 합니다. 이 시스템은 DCS에 값을 쓰지 않고, 안전 알람·인터록은 DCS/SIS가 우선 처리합니다.</p>
@@ -558,7 +558,7 @@ function evaluate(V,s){
   if(ord){
     if(r.st==='bad'&&!ord.escalated&&(ord.status==='sent'||ord.status==='ack')){
       ord.escalated=true;ord.sev='bad';ord.pri='긴급';ord.esc++;ord.reason=r.reason;ord.title=`${V.name} ${titleOf('bad',r.dir)}`;
-      Bus.send('order',{order:ord});D.orders=true;logE('esc',`${V.name}: 조치 중 운전한계 이탈로 악화 — 현장 단말 긴급 재알림`)}
+      Bus.send('order',{order:ord});D.orders=true;logE('esc',`${V.name}: 조치 중 운전한계 이탈로 악화 — 현장 지시를 긴급으로 전환`)}
     return;
   }
   if(RANK[r.st]>(s.supp||0))newRec(V,r);
@@ -611,7 +611,7 @@ function tick(){
   if(S.faults.length!==n0)renderSim();
   S.n++;
   VARS.forEach(V=>{const s=S.vars[V.tag];s.h.push(+(V.sp+gauss()*V.noise+(off[V.tag]||0)).toFixed(V.dec+1));if(s.h.length>HIST)s.h.shift();evaluate(V,s)});
-  S.orders.forEach(o=>{if(o.status==='sent'&&!o.od&&Date.now()-o.sentAt>OVERDUE){o.od=true;logE('sys',`${o.zone} 담당 30초 미응답 — 단말은 계속 재알림 중, 필요하면 무전으로 확인하세요`)}});
+  S.orders.forEach(o=>{if(o.status==='sent'&&!o.od&&Date.now()-o.sentAt>OVERDUE){o.od=true;logE('sys',`${o.zone} 담당 30초 미응답 — 필요하면 무전으로 확인하세요`)}});
   Bus.putState({sid:S.sid,t:Date.now(),vars:VARS.map(V=>({tag:V.tag,v:last(S.vars[V.tag].h),st:S.vars[V.tag].st}))});
   pubSnap();
   renderCCR();
@@ -729,7 +729,7 @@ function renderOrders(){
   D.orders=false;const list=S.orders.slice(0,12);
   if(!list.length){$('orders').innerHTML='<div class="empty">아직 보낸 지시가 없습니다.<br>권고를 검토하고 "승인 · 현장 지시 전송"을 누르면 담당 단말로 갑니다.</div>';return}
   $('orders').innerHTML=`<div class="ords">${list.map(o=>`<div class="ord st-${o.status}" data-oid="${o.id}">
-    <div><div class="ord-t"><span class="pill ${o.pri==='긴급'?'bad':''}">${o.pri}</span> ${esc(o.title)}</div><div class="ord-s">${esc(o.zone)} 담당 · ${hms(o.sentAt)} · ${esc(o.by)}${o.esc?' · <b style="color:var(--bad)">악화 재알림</b>':''}</div></div>
+    <div><div class="ord-t"><span class="pill ${o.pri==='긴급'?'bad':''}">${o.pri}</span> ${esc(o.title)}</div><div class="ord-s">${esc(o.zone)} 담당 · ${hms(o.sentAt)} · ${esc(o.by)}${o.esc?' · <b style="color:var(--bad)">악화 · 긴급 전환</b>':''}</div></div>
     <div class="ord-m"><span class="pill ${ordPill(o)}">${ORDST[o.status]}</span><span data-od>${ordDetail(o)}</span></div>
     <div>${o.status==='closed'?'':`<button type="button" class="btn sm${o.status==='done'||o.status==='help'?' primary':''}" data-close="${o.id}">${o.status==='done'||o.status==='help'?'확인 · 종료':'지시 취소'}</button>`}</div></div>`).join('')}</div>`;
   updateOrdersLive();
@@ -924,7 +924,7 @@ function createWorker(host,embedded){
     unlockAudio();vibrate(80);setTimeout(()=>play('normal'),200);
     try{if('wakeLock' in navigator){const req=()=>navigator.wakeLock.request('screen').catch(()=>{});req();document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')req()})}}catch(e){}
     W.started=true;R('start').hidden=true;render();hb();
-    const p=[...W.orders.values()].filter(o=>mine(o)&&o.status==='sent');if(p.length)setTimeout(()=>notify(p[0],'repeat'),600);
+    const p=[...W.orders.values()].filter(o=>mine(o)&&o.status==='sent');if(p.length)setTimeout(()=>notify(p[0],'new'),600);
   }
 
   Bus.on(m=>{
@@ -937,18 +937,14 @@ function createWorker(host,embedded){
     W.orders.set(k,o);
     if(mine(o)&&W.ready&&W.started){
       if(!prev&&o.status==='sent')notify(o,'new');
-      else if(prev&&o.esc>(prev.esc||0)&&(o.status==='sent'||o.status==='ack'))notify(o,'esc');
+      else if(prev&&W.ovKey===k&&o.status==='sent')showOv(o,W.ovKind||'new'); // 악화돼도 다시 울리지 않고 내용만 갱신
     }
     if(W.ovKey===k&&(o.status==='closed'||(o.status!=='sent'&&W.ovKind!=='esc')))hideOv();
     if(W.sel===k&&o.status==='closed')closeSheet();
     render();
   });
   Bus.ready(()=>{W.ready=true;render();hb()});
-  setInterval(()=>{ // 미확인 지시 재알림: 긴급 12초, 일반 30초 간격
-    if(!W.ready||!W.started)return;const now=Date.now();
-    for(const o of W.orders.values()){if(o.status!=='sent'||!mine(o))continue;
-      if(now-(W.lastAlert[keyOf(o)]||0)>(o.pri==='긴급'?12000:30000)){notify(o,'repeat');break}}
-  },1000);
+  // 다시 알림 없음: 지시 하나당 도착할 때 한 번만 알림
   setInterval(hb,10000);
   setInterval(renderConn,2000);
 
