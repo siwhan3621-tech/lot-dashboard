@@ -3,87 +3,53 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>휴대폰 접속 QR</title>
+<title>LOT 품질 알림 앱 접속 QR</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
 <style>
-/* serve.ps1로 연 서버의 Wi-Fi 주소를 /api/info에서 받아 휴대폰 접속 QR을 그림 (발표 화면에 띄워 두는 용도) */
+/* 발표 화면에 띄워 청중이 직접 참여하는 용도: QR 하나 = LOT 품질 알림 앱 (인터넷 주소, 같은 Wi-Fi 필요 없음) */
 :root{--bg:#eef0f5;--surface:#fff;--line:#d8dbe5;--fg:#171a24;--muted:#5d6273;--accent:#4b46c8;--bad:#c8333b;
   --f-body:"IBM Plex Sans KR",system-ui,"Malgun Gothic",sans-serif;--f-mono:"IBM Plex Mono",ui-monospace,monospace}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#0d0f15;--surface:#1a1d27;--line:#323748;--fg:#e8eaf2;--muted:#9aa0b4;--accent:#9d99ff;--bad:#ff6b72;color-scheme:dark}}
 :root[data-theme="dark"]{--bg:#0d0f15;--surface:#1a1d27;--line:#323748;--fg:#e8eaf2;--muted:#9aa0b4;--accent:#9d99ff;--bad:#ff6b72;color-scheme:dark}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--f-body);padding:28px 16px 40px}
-.wrap{max-width:980px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
-h1{margin:0;font-size:1.6rem;letter-spacing:-.01em}
-.sub{color:var(--muted);margin-top:4px}
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
-.card.main{border:2px solid var(--accent)}
-.tag{font-size:.74rem;font-weight:700;letter-spacing:.06em;color:var(--accent)}
-.card h2{margin:0;font-size:1.2rem}
-.card p{margin:0;color:var(--muted);font-size:.88rem}
-.qr{width:260px;max-width:100%;aspect-ratio:1;background:#fff;border-radius:12px;padding:10px;display:grid;place-items:center}
-.qr svg,.qr img{width:100%;height:100%;display:block}
-.url{font-family:var(--f-mono);font-size:.86rem;word-break:break-all;background:var(--bg);border-radius:8px;padding:6px 10px}
-.steps{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 18px}
-.steps ol{margin:6px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:4px;font-size:.9rem}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--f-body);padding:28px 16px 40px;min-height:100vh;display:grid;place-items:center}
+.card{background:var(--surface);border:2px solid var(--accent);border-radius:22px;padding:28px 24px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;width:min(560px,100%)}
+.tag{font-size:.8rem;font-weight:700;letter-spacing:.06em;color:var(--accent)}
+h1{margin:0;font-size:1.9rem;letter-spacing:-.01em}
+p{margin:0;color:var(--muted);font-size:1rem;line-height:1.5}
+.qr{width:min(400px,80vw);aspect-ratio:1;background:#fff;border-radius:16px;padding:14px;display:grid;place-items:center;margin:6px 0}
+.qr svg{width:100%;height:100%;display:block}
+.url{font-family:var(--f-mono);font-size:.95rem;word-break:break-all;background:var(--bg);border-radius:10px;padding:8px 12px}
+.steps{text-align:left;font-size:.92rem;margin:4px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:4px;color:var(--fg)}
 .err{color:var(--bad);font-weight:600}
 </style>
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <h1>휴대폰으로 접속하기</h1>
-    <div class="sub" id="sub">서버 주소를 확인하는 중…</div>
-  </header>
-  <div class="cards" id="cards"></div>
-  <section class="steps">
-    <b>접속이 안 될 때</b>
-    <ol>
-      <li>휴대폰이 LTE/5G가 아니라 PC와 <b>같은 Wi-Fi</b>에 연결되어 있는지 확인하세요.</li>
-      <li>PC에서 serve.ps1 서버 창이 켜져 있어야 합니다.</li>
-      <li>회사·학교 Wi-Fi는 기기 간 통신을 막는 경우가 있습니다. 휴대폰 핫스팟에 PC를 연결한 뒤 이 페이지를 새로고침하면 새 QR이 나옵니다.</li>
-      <li>현장 단말은 "알림 받기 시작"을 눌러야 소리·진동이 켜집니다 (iPhone은 진동 없이 소리·화면만).</li>
-    </ol>
-  </section>
-</div>
+<main class="card">
+  <span class="tag">발표 참여 · 휴대폰으로 접속</span>
+  <h1>LOT 품질 알림 앱</h1>
+  <p>카메라로 QR을 찍으면 바로 열립니다.<br><b>Wi-Fi·데이터 어느 쪽이든</b> 접속됩니다.</p>
+  <div class="qr" id="qr" role="img" aria-label="LOT 품질 알림 앱 접속 QR 코드"></div>
+  <span class="url" id="url"></span>
+  <ol class="steps">
+    <li>앱이 열리면 오른쪽 위 <b>🔔 알림 켜기</b>를 누르세요 (소리·진동 켜짐).</li>
+    <li>발표 중 CCR이 작업 지시를 보내면 여러분 휴대폰이 <b>울리고 진동</b>합니다.</li>
+    <li><b>확인 · 출동</b>을 누르면 CCR 화면에 응답이 표시됩니다.</li>
+  </ol>
+  <p style="font-size:.8rem">iPhone은 웹에서 진동을 지원하지 않아 소리·화면으로만 알립니다. 화면을 켜 둔 상태에서 알림을 받습니다.</p>
+</main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script>
 (function(){
-const PAGES=[
-  {path:'w',file:'process.html?role=worker',tag:'공정 변수 연동',name:'현장 작업자 단말',desc:'CCR이 승인한 작업 지시를 진동·소리로 받습니다',main:true},
-  {path:'q',file:'live.html',tag:'품질 검사 결과',name:'LOT 품질 알림 앱',desc:'lot 검사 결과·이탈 예고 알림을 봅니다'}
-];
-// 온라인(GitHub Pages 등) 버전용: 시작 화면 + 품질 알림 앱 (어느 네트워크에서든 열림)
-const ONLINE=[
-  {file:'start.html',tag:'팀원 공유용',name:'시작 화면',desc:'모든 화면으로 들어가는 입구',main:true},
-  {file:'live.html',tag:'품질 검사 결과',name:'LOT 품질 알림 앱',desc:'lot 검사 결과·이탈 예고 알림을 봅니다'}
-];
-const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-function qrSvg(url){
-  if(typeof qrcode!=='function')return '<span class="err">QR 라이브러리를 불러오지 못했습니다 (인터넷 연결 확인). 아래 주소를 직접 입력하세요.</span>';
-  const q=qrcode(0,'M');q.addData(url);q.make();return q.createSvgTag({cellSize:6,margin:2,scalable:true});
-}
-const cardHTML=(p,url)=>`<article class="card${p.main?' main':''}"><span class="tag">${p.tag}</span><h2>${p.name}</h2><p>${p.desc}</p><div class="qr" role="img" aria-label="${esc(p.name)} 접속 QR 코드">${qrSvg(url)}</div><span class="url">${esc(url)}</span></article>`;
-function draw(host){
-  document.getElementById('sub').innerHTML=`PC와 같은 Wi-Fi에서 카메라로 QR을 찍거나, 주소창에 <b style="font-family:var(--f-mono);color:var(--fg)">${esc(host)}</b> 만 입력하세요`;
-  document.getElementById('cards').innerHTML=PAGES.map(p=>cardHTML(p,`http://${host}/${p.path}`)).join('');
-}
-function drawOnline(){
-  const base=location.href.replace(/[^/]*([?#].*)?$/,'');
-  document.getElementById('sub').textContent='어느 Wi-Fi·데이터 환경에서든 카메라로 QR을 찍으면 열립니다';
-  document.getElementById('cards').innerHTML=ONLINE.map(p=>cardHTML(p,base+p.file)).join('');
-}
-fetch('api/info',{cache:'no-store'}).then(r=>{if(!r.ok)throw 0;return r.json()}).then(info=>{
-  const ip=(info.ips||[])[0];
-  if(!ip)throw new Error('no ip');
-  draw(info.port==80?ip:`${ip}:${info.port}`);
-}).catch(()=>{
-  if(location.protocol==='https:')drawOnline();
-  else{document.getElementById('sub').innerHTML='<span class="err">서버 주소를 알 수 없습니다. serve.ps1로 서버를 띄운 뒤 http://localhost/qr 로 여세요.</span>'}
-});
+// 항상 인터넷(GitHub Pages) 주소로 QR을 만듦 → 같은 Wi-Fi 제한 없음
+const PUBLIC='https://siwhan3621-tech.github.io/lot-dashboard/live.html';
+const url=/\.github\.io$/.test(location.hostname)?new URL('live.html',location.href).href:PUBLIC;
+document.getElementById('url').textContent=url;
+const box=document.getElementById('qr');
+if(typeof qrcode!=='function'){box.innerHTML='<span class="err">QR을 그리지 못했습니다 (인터넷 연결 확인). 위 주소를 직접 입력하세요.</span>';return}
+const q=qrcode(0,'M');q.addData(url);q.make();box.innerHTML=q.createSvgTag({cellSize:8,margin:2,scalable:true});
 })();
 </script>
 </body>

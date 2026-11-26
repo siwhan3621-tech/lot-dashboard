@@ -438,11 +438,24 @@ const stCol=st=>st==='bad'?'var(--bad)':st==='pre'?'var(--accent)':'var(--fg)';
 /* ===================== 메시지 버스 =====================
    서버(serve.ps1)로 열면 /api 중계로 PC ↔ 휴대폰 연결,
    파일로 열면 같은 화면(과 같은 브라우저 탭) 안에서만 연결 */
+/* 서버가 없으면(GitHub Pages 등) 인터넷 중계(ntfy.sh)로 연결 → 같은 Wi-Fi가 아니어도 휴대폰 알림 앱과 주고받음 */
+const PUBLIC_LIVE='https://siwhan3621-tech.github.io/lot-dashboard/live.html';
+const RELAY='https://ntfy.sh/',TOPIC=new URLSearchParams(location.search).get('ch')||'lotwatch-hk08-q7m3x9';
 const Bus=(()=>{
-  const subs=[],readyCbs=[];let mode='local',since=0,info=null,ok=true,isReady=false,bc=null;
+  const subs=[],readyCbs=[];let mode='local',since=0,info=null,ok=true,isReady=false,bc=null,lastState=0;
+  const SELF=Math.random().toString(36).slice(2,10),seen=new Set();
   try{bc=new BroadcastChannel('lotqc-process-v1')}catch(e){}
   const deliver=m=>subs.slice().forEach(f=>{try{f(m)}catch(e){console.error(e)}});
-  if(bc)bc.onmessage=e=>deliver(e.data);
+  const deliverExt=m=>{if(!m||m._from===SELF)return;if(m._mid){if(seen.has(m._mid))return;seen.add(m._mid)}deliver(m)};
+  if(bc)bc.onmessage=e=>deliverExt(e.data);
+  const relay=m=>fetch(RELAY+TOPIC,{method:'POST',body:JSON.stringify(m)}).then(r=>{ok=r.ok}).catch(()=>{ok=false});
+  function startCloud(){
+    if(!('EventSource' in window))return;
+    try{const es=new EventSource(RELAY+TOPIC+'/sse'+(ROLE==='worker'?'?since=10m':''));mode='cloud';
+      es.onopen=()=>{ok=true};es.onerror=()=>{ok=false};
+      es.onmessage=e=>{try{const d=JSON.parse(e.data);if(d.event&&d.event!=='message')return;ok=true;deliverExt(JSON.parse(d.message))}catch(x){}};
+    }catch(e){}
+  }
   const setReady=()=>{if(isReady)return;isReady=true;readyCbs.splice(0).forEach(f=>f())};
   async function pollOnce(){
     try{const r=await fetch('api/msg?since='+since,{cache:'no-store'});const a=await r.json();
@@ -454,14 +467,17 @@ const Bus=(()=>{
     if(/^https?:$/.test(location.protocol)){
       try{const r=await fetch('api/info',{cache:'no-store'});if(r.ok){info=await r.json();mode='server';since=ROLE==='ccr'?(info.lastId||0):0}}catch(e){}
     }
-    if(mode==='server'){await pollOnce();setReady();loop();if(ROLE==='worker')stateLoop()}else setReady();
+    if(mode==='server'){await pollOnce();setReady();loop();if(ROLE==='worker')stateLoop()}else{startCloud();setReady()}
   }
-  function send(type,p){const m=Object.assign({type},p);
+  const mid=()=>SELF+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,6);
+  function send(type,p){const m=Object.assign({type,_from:SELF,_mid:mid()},p);
     if(mode==='server')fetch('api/msg',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(m)}).catch(()=>{ok=false});
-    else{deliver(m);if(bc)try{bc.postMessage(m)}catch(e){}}}
+    else{deliver(m);if(bc)try{bc.postMessage(m)}catch(e){}if(mode==='cloud')relay(m)}}
   function putState(s){deliver({type:'state',s});
     if(mode==='server')fetch('api/state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(s)}).catch(()=>{});
-    else if(bc)try{bc.postMessage({type:'state',s})}catch(e){}}
+    else{const m={type:'state',s,_from:SELF,_mid:mid()};if(bc)try{bc.postMessage(m)}catch(e){}
+      // 인터넷 중계는 전송 횟수 제한이 있어 공정 값은 10초에 한 번만 보냄
+      if(mode==='cloud'&&Date.now()-lastState>10000){lastState=Date.now();relay(m)}}}
   return {on:f=>subs.push(f),send,putState,start,ready:f=>isReady?f():readyCbs.push(f),
     get mode(){return mode},get ok(){return ok},get info(){return info}};
 })();
@@ -709,7 +725,8 @@ function renderLog(){D.log=false;$('log').innerHTML=S.log.slice(0,60).map(l=>`<l
 function renderHeader(){
   const devs=Object.values(S.devices).filter(d=>Date.now()-d.at<25000&&!d.embedded).length;let cls,txt;
   if(Bus.mode==='server'){cls=Bus.ok?'on':'err';txt=Bus.ok?`서버 연동 · 현장 단말 ${devs}대 접속 중`:'서버 응답 없음'}
-  else{cls='local';txt='로컬 데모 (휴대폰 연결은 서버로 열어야 함)'}
+  else if(Bus.mode==='cloud'){cls=Bus.ok?'on':'err';txt=Bus.ok?`인터넷 연동 · 휴대폰 알림 앱·단말 ${devs}대 접속 중`:'인터넷 중계 연결 확인 중'}
+  else{cls='local';txt='로컬 데모 (이 브라우저 안에서만 연결)'}
   $('conn').className='conn '+cls;$('conn').lastElementChild.textContent=txt;
   $('ccrSnd').textContent=S.snd?'CCR 알림음 켬':'CCR 알림음 끔';$('ccrSnd').setAttribute('aria-pressed',String(S.snd));
 }
@@ -738,6 +755,10 @@ function renderConnect(){
     const urls=(Bus.info.ips||[]).map(ip=>`http://${ip}${Bus.info.port==80?'':':'+Bus.info.port}/w`);
     c.innerHTML=`<b>현장 단말 연결</b><span class="note">같은 Wi-Fi의 휴대폰·전용 단말에서 QR을 찍거나 아래 주소로 접속하세요.</span>${urls.length?'<div class="qr" id="qr"></div>':''}${urls.map(u=>`<span class="url">${esc(u)}</span>`).join('')}<a class="btn sm" href="?role=worker" target="_blank" rel="noopener">이 PC에서 작업자 화면 새 탭으로 열기</a>`;
     if(urls.length)drawQR(urls[0]);
+  }else if(Bus.mode==='cloud'){
+    const url=/^https?:$/.test(location.protocol)?new URL('live.html',location.href).href:PUBLIC_LIVE;
+    c.innerHTML=`<b>휴대폰 연결 (인터넷)</b><span class="note">청중·현장 휴대폰은 QR로 <b>LOT 품질 알림 앱</b>에 접속하면 됩니다. 같은 Wi-Fi가 아니어도(데이터 포함) 연결되고, 여기서 승인한 작업 지시가 알림 앱에 최우선으로 울립니다.</span><div class="qr" id="qr"></div><span class="url">${esc(url)}</span><a class="btn sm" href="?role=worker" target="_blank" rel="noopener">이 PC에서 작업자 화면 새 탭으로 열기</a>`;
+    drawQR(url);
   }else{
     c.innerHTML=`<b>현장 단말 연결</b><span class="note">지금은 서버 없이(파일·온라인 버전) 열려 있어 이 화면 안의 미리보기 단말만 연결됩니다. 실제 휴대폰을 연결하려면 이 폴더에서 serve.ps1로 서버를 띄우고 <span class="mono">http://localhost/c</span>로 여세요. 휴대폰용 주소와 QR이 여기에 표시됩니다.</span>`;
   }
@@ -801,6 +822,7 @@ function createWorker(host,embedded){
   function renderConn(){
     const c=R('conn');let cls='',txt;const fresh=Date.now()-W.lastState<6000;
     if(Bus.mode==='server'){txt=fresh?'CCR과 실시간 연결됨':'CCR 신호 대기 중 (PC에서 CCR 화면이 열려 있는지 확인)';cls=fresh?'':'warn';if(!Bus.ok){cls='bad';txt='서버 연결 끊김 — 같은 Wi-Fi인지 확인하세요'}}
+    else if(Bus.mode==='cloud'&&!embedded){txt=Bus.ok?(fresh?'CCR과 인터넷으로 연결됨':'인터넷 연결됨 · CCR 신호 대기 중'):'인터넷 중계 연결 확인 중';cls=Bus.ok&&fresh?'':'warn'}
     else{txt=embedded?'데모 단말 · 왼쪽 CCR 화면과 연결됨':'로컬 연결 (같은 브라우저 안에서만)';cls=fresh?'':'warn'}
     c.className='w-conn '+cls;c.innerHTML=`<i></i><span>${esc(txt)}</span>`;
   }
