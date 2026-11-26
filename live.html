@@ -126,7 +126,7 @@ button{cursor:pointer}
 .res button{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:10px 12px;text-align:left}
 .res button b{display:block;font-size:.88rem} .res button span{font-size:.76rem;color:var(--muted)}
 .res button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
-.iconbtn.snd-off{color:var(--muted)} .iconbtn.snd-need{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+.sndst{font-size:.78rem;font-weight:600;color:var(--accent);white-space:nowrap;padding:6px 4px}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);display:inline-block;flex-shrink:0}
 .dot.warn{background:var(--warn)} .dot.bad{background:var(--bad)}
 
@@ -237,7 +237,7 @@ button{cursor:pointer}
         <h1>LOT 품질 알림</h1>
         <span class="live on" id="live"><i></i><span id="liveTxt">실시간 수신 중</span></span>
       </div>
-      <button class="iconbtn snd-need" type="button" id="sndBtn">🔔 알림 켜기</button>
+      <span class="sndst" id="sndBtn" aria-label="소리 알림 켜짐">🔔 소리 켬</span>
       <button class="iconbtn demo-btn" type="button" id="demoBtn">데모</button>
     </header>
 
@@ -522,8 +522,10 @@ function unlockAudio(){try{
   // 무음 버퍼를 한 번 재생해 오디오 출력을 확실히 깨움 (iOS)
   if(actx){const b=actx.createBuffer(1,1,22050),s=actx.createBufferSource();s.buffer=b;s.connect(actx.destination);s.start(0)}
   audioOn=!!actx}catch(e){}}
-// 화면 아무 곳을 눌러도 소리 준비 (단, 알림 버튼 자체는 아래 onclick에서 처리 → 켜자마자 무음으로 바뀌던 문제 방지)
-document.addEventListener('pointerdown',e=>{if(e.target.closest&&e.target.closest('#sndBtn'))return;const was=audioOn;unlockAudio();if(!was&&audioOn)renderSnd()},{passive:true});
+// 소리는 항상 켬(끄는 버튼 없음). 페이지가 열리자마자 오디오를 준비하고,
+// 브라우저가 막아 두었으면 화면에 처음 손이 닿는 순간(터치·클릭·키) 자동으로 풀림
+['pointerdown','touchstart','touchend','click','keydown'].forEach(ev=>document.addEventListener(ev,()=>unlockAudio(),{passive:true,capture:true}));
+unlockAudio();
 // 화면이 꺼졌다 켜지면 오디오가 멈춰 있을 수 있어 다시 깨움
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&actx&&actx.state!=='running')try{actx.resume()}catch(e){}});
 const SND={
@@ -542,9 +544,7 @@ function playSnd(name){
     o.connect(g);g.connect(actx.destination);o.start(t);o.stop(t+d+.03);t+=d+gap});
 }
 function vib(p){try{if($('vib').checked&&navigator.vibrate)navigator.vibrate(p)}catch(e){}}
-function renderSnd(){const b=$('sndBtn');if(!b)return;
-  b.className='iconbtn '+(!audioOn?'snd-need':muted?'snd-off':'');
-  b.textContent=!audioOn?'🔔 알림 켜기':muted?'🔕 무음':'🔔 소리 켬'}
+function renderSnd(){} // 소리는 항상 켬 고정
 
 /* ---------- CCR 작업 지시 수신 (현장 작업자 단말 기능을 이 앱에 합침) ----------
    연결: 공개 MQTT 중계 서버 2곳(WebSocket)에 동시에 접속 → 어느 네트워크에서든, 전송 횟수 제한 없이 연결
@@ -800,7 +800,6 @@ $('demoBtn').onclick=()=>$('sim').classList.add('open');
 $('simClose').onclick=()=>$('sim').classList.remove('open');
 setInterval(updLive,1000);
 $('ov').addEventListener('click',e=>{if(e.target.closest('[data-ovack]'))return ackOrder(ovKey);if(e.target.closest('[data-ovclose]'))hideOv()});
-$('sndBtn').onclick=()=>{if(!audioOn){unlockAudio();muted=false;setTimeout(()=>playSnd('test'),150);try{navigator.vibrate&&navigator.vibrate(80)}catch(e){}}else muted=!muted;renderSnd()};
 // 다시 알림 없음: 지시 하나당 알림은 도착할 때 한 번만 (미확인 지시는 홈·알림 탭 맨 위에 계속 표시)
 setInterval(hb,15000);
 // 화면이 꺼지지 않게 (지원하는 브라우저만)
