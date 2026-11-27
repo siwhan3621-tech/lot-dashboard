@@ -228,6 +228,7 @@ button{cursor:pointer}
 }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script>/* 첫 번째 주소가 막힌 네트워크면 다른 주소에서 받음 */window.mqtt||document.write('<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"><\/script>')</script>
 </head>
 <body>
 <div class="stage">
@@ -427,7 +428,9 @@ function makeAlerts(i){
       extra:warns.slice(1).map(w=>({i,text:w.t}))});
   });
   fresh.forEach(a=>{a.id=++aid;a.t=lot.t;a.status='new';a.log=[];a.iLast=i;a.extra=a.extra||[];ALERTS.unshift(a)});
-  const orderOnTop=!!ovKey; // CCR 작업 지시 화면이 떠 있으면 품질 알림은 목록에만 쌓고 소리·토스트는 쉼 (지시가 최우선)
+  // CCR 작업 지시 화면이 떠 있거나 방금(5초 안) 지시 알림음이 울렸으면 품질 알림은 목록에만 쌓고 소리·토스트는 쉼
+  // → 지시 알림음이 품질 알림음에 묻히지 않게 (지시가 최우선)
+  const orderOnTop=!!ovKey||Date.now()-lastOrderSnd<5000;
   if(merged&&!fresh.length){ // 묶인 신호는 알림을 맨 위로 올리고 조용히 알려 줌
     ALERTS.splice(ALERTS.indexOf(merged.a),1);ALERTS.unshift(merged.a);
     if(!orderOnTop)showToast(merged.a,1,'추가 신호 · '+merged.text);
@@ -521,11 +524,35 @@ function unlockAudio(){try{
   if(actx&&actx.state!=='running')actx.resume();
   // 무음 버퍼를 한 번 재생해 오디오 출력을 확실히 깨움 (iOS)
   if(actx){const b=actx.createBuffer(1,1,22050),s=actx.createBufferSource();s.buffer=b;s.connect(actx.destination);s.start(0)}
+  // 들리지 않는 아주 작은 신호를 계속 흘려 휴대폰 오디오 출력이 잠들지 않게 함
+  // → 첫 알림음이 늦게 나거나 짧은 알림음이 잘려 안 들리던 문제 방지
+  if(actx&&!keepAlive){try{const o=actx.createOscillator(),g=actx.createGain();o.frequency.value=40;g.gain.value=0.0003;o.connect(g);g.connect(actx.destination);o.start();keepAlive=o}catch(e){}}
+  unlockFiles();
   audioOn=!!actx}catch(e){}}
+let keepAlive=null;
+/* 알림음을 실제 소리 파일(WAV)로 미리 만들어 <audio>로 재생 — 휴대폰에서 더 안정적이고 iPhone 무음 스위치 영향도 적음.
+   처음 화면을 터치할 때 각 소리를 무음으로 한 번 재생해 '재생 허용' 상태로 만들어 둠. 실패하면 기존 방식(Web Audio)으로 재생 */
+const SFILE={},SFILE_OK={};
+function makeWav(P){
+  const sr=22050,tot=P.seq.reduce((a,[f,d,gap])=>a+d+gap,0)+.1,n=Math.ceil(sr*tot),pcm=new Int16Array(n);let t0=0;
+  P.seq.forEach(([f,d,gap])=>{const s0=Math.floor(t0*sr),len=Math.floor(d*sr);
+    for(let i=0;i<len;i++){const tt=i/sr,ph=2*Math.PI*f*tt;
+      let w=P.type==='square'?(Math.sin(ph)>=0?1:-1):P.type==='triangle'?2/Math.PI*Math.asin(Math.sin(ph)):Math.sin(ph);
+      const env=Math.min(1,tt/.01,(d-tt)/.03);pcm[s0+i]=Math.max(-32767,Math.min(32767,w*env*Math.min(1,P.vol*1.6)*32767))}
+    t0+=d+gap});
+  const buf=new ArrayBuffer(44+n*2),v=new DataView(buf),ws=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i))};
+  ws(0,'RIFF');v.setUint32(4,36+n*2,true);ws(8,'WAVE');ws(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
+  v.setUint32(24,sr,true);v.setUint32(28,sr*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);ws(36,'data');v.setUint32(40,n*2,true);
+  new Int16Array(buf,44).set(pcm);return URL.createObjectURL(new Blob([buf],{type:'audio/wav'}))}
+let filesUnlocked=false;
+function unlockFiles(){if(filesUnlocked||typeof SND==='undefined')return;filesUnlocked=true;
+  Object.keys(SND).forEach(k=>{try{if(!SFILE[k]){const a=new Audio(makeWav(SND[k]));a.preload='auto';SFILE[k]=a}
+    const a=SFILE[k];a.muted=true;const p=a.play();
+    if(p&&p.then)p.then(()=>{a.pause();a.currentTime=0;a.muted=false;SFILE_OK[k]=true}).catch(()=>{a.muted=false;filesUnlocked=false})}catch(e){}})}
 // 소리는 항상 켬(끄는 버튼 없음). 페이지가 열리자마자 오디오를 준비하고,
 // 브라우저가 막아 두었으면 화면에 처음 손이 닿는 순간(터치·클릭·키) 자동으로 풀림
 ['pointerdown','touchstart','touchend','click','keydown'].forEach(ev=>document.addEventListener(ev,()=>unlockAudio(),{passive:true,capture:true}));
-unlockAudio();
+setTimeout(unlockAudio,0); // 아래 소리 정의가 끝난 뒤 실행
 // 화면이 꺼졌다 켜지면 오디오가 멈춰 있을 수 있어 다시 깨움
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&actx&&actx.state!=='running')try{actx.resume()}catch(e){}});
 const SND={
@@ -535,9 +562,20 @@ const SND={
   warn:{type:'sine',vol:.16,seq:[[660,.12,.05],[880,.16,0]]},
   test:{type:'sine',vol:.25,seq:[[660,.1,.04],[880,.1,.04],[1175,.2,0]]}
 };
+let lastOrderSnd=0;
 function playSnd(name){
-  if(muted||!actx)return;
-  if(actx.state!=='running'){try{actx.resume().then(()=>{if(actx.state==='running')playSnd(name)}).catch(()=>{})}catch(e){}return}
+  if(muted)return;
+  // 지시 알림음이 울릴 때는 재생 중인 품질 알림음을 멈춰 지시 소리가 또렷하게 들리게 함
+  if(name==='order'||name==='orderUrgent'){lastOrderSnd=Date.now();['bad','warn'].forEach(k=>{try{if(SFILE[k])SFILE[k].pause()}catch(e){}})}
+  if(actx&&actx.state!=='running')try{actx.resume()}catch(e){}
+  const a=SFILE[name];
+  if(a&&SFILE_OK[name]){try{a.pause();a.currentTime=0;a.muted=false;a.volume=1;
+    const p=a.play();if(p&&p.catch)p.catch(()=>playTone(name));return}catch(e){}}
+  playTone(name);
+}
+function playTone(name){
+  if(!actx)return;
+  if(actx.state!=='running'){try{actx.resume().then(()=>{if(actx.state==='running')playTone(name)}).catch(()=>{})}catch(e){}return}
   const P=SND[name];let t=actx.currentTime+.02;
   P.seq.forEach(([f,d,gap])=>{const o=actx.createOscillator(),g=actx.createGain();o.type=P.type;o.frequency.value=f;
     g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(P.vol,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+d);
@@ -576,7 +614,9 @@ async function busStart(){
   hb();
 }
 function busSend(type,p){const m=Object.assign({type,_from:SELF,_mid:SELF+'-'+Date.now()+'-'+Math.random().toString(36).slice(2,6)},p);
-  const s=JSON.stringify(m);MQ.forEach(c=>{try{if(c.connected)c.publish(MQ_T+'/m',s,{qos:0})}catch(e){}});
+  // 확인·출동·완료 보고는 반드시 전달(qos 1, 잠깐 끊겨 있어도 다시 연결되면 보냄). 접속 신호(hb)만 가볍게
+  const s=JSON.stringify(m),q=type==='hb'?0:1;
+  MQ.forEach(c=>{try{if(type!=='hb'||c.connected)c.publish(MQ_T+'/m',s,{qos:q})}catch(e){}});
   if(bcx)try{bcx.postMessage(m)}catch(e){}
 }
 function hb(){busSend('hb',{device:DEVICE,zone:'전체',name:myName+' · 알림 앱'})}

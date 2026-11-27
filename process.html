@@ -261,6 +261,7 @@ h1,h2,h3,h4{margin:0;text-wrap:balance}
 .w-zsel button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script>/* 첫 번째 주소가 막힌 네트워크면 다른 주소에서 받음 */window.mqtt||document.write('<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"><\/script>')</script>
 </head>
 <body>
 
@@ -454,7 +455,9 @@ const Bus=(()=>{
   if(bc)bc.onmessage=e=>deliverExt(e.data);
   // 공개 MQTT 중계 2곳에 동시 접속 (전송 횟수 제한 없음, 한 곳이 끊겨도 동작, 중복은 _mid로 걸러냄)
   let MQ=[];
-  const relay=(m,retain)=>{const s=JSON.stringify(m);MQ.forEach(c=>{try{c.publish(MQ_T+(retain?'/snap':'/m'),s,{qos:retain?1:0,retain:!!retain})}catch(e){}})};
+  // 지시·확인·보고는 qos 1(전달 보장), 접속 신호·공정 값처럼 자주 바뀌는 것은 qos 0
+  const relay=(m,retain)=>{const s=JSON.stringify(m),q=(retain||!(m.type==='hb'||m.type==='state'))?1:0;
+    MQ.forEach(c=>{try{if(q||c.connected)c.publish(MQ_T+(retain?'/snap':'/m'),s,{qos:q,retain:!!retain})}catch(e){}})};
   function startCloud(){
     if(!window.mqtt)return;mode='cloud';ok=false;
     const upd=()=>{ok=MQ.some(c=>c.connected)};
@@ -494,7 +497,29 @@ let actx=null;
 function unlockAudio(){try{
   try{if(navigator.audioSession)navigator.audioSession.type='playback'}catch(e){} // iPhone 무음 스위치 무시
   if(!actx){const AC=window.AudioContext||window.webkitAudioContext;if(AC)actx=new AC()}
-  if(actx&&actx.state!=='running')actx.resume()}catch(e){}}
+  if(actx&&actx.state!=='running')actx.resume();
+  // 들리지 않는 작은 신호로 휴대폰 오디오 출력을 계속 깨워 둠 → 첫 알림음 지연·짧은 알림음 잘림 방지
+  if(actx&&!keepAlive){try{const o=actx.createOscillator(),g=actx.createGain();o.frequency.value=40;g.gain.value=0.0003;o.connect(g);g.connect(actx.destination);o.start();keepAlive=o}catch(e){}}
+  unlockFiles()}catch(e){}}
+let keepAlive=null,filesUnlocked=false;
+/* 알림음을 소리 파일(WAV)로 만들어 <audio>로 재생 (휴대폰에서 더 안정적), 실패하면 Web Audio로 */
+const SFILE={},SFILE_OK={};
+function makeWav(P){
+  const sr=22050,tot=P.seq.reduce((a,[f,d,gap])=>a+d+gap,0)+.1,n=Math.ceil(sr*tot),pcm=new Int16Array(n);let t0=0;
+  P.seq.forEach(([f,d,gap])=>{const s0=Math.floor(t0*sr),len=Math.floor(d*sr);
+    for(let i=0;i<len;i++){const tt=i/sr,ph=2*Math.PI*f*tt;
+      const w=P.type==='square'?(Math.sin(ph)>=0?1:-1):P.type==='triangle'?2/Math.PI*Math.asin(Math.sin(ph)):Math.sin(ph);
+      const env=Math.min(1,tt/.01,(d-tt)/.03);pcm[s0+i]=Math.max(-32767,Math.min(32767,w*env*Math.min(1,P.vol*1.6)*32767))}
+    t0+=d+gap});
+  const buf=new ArrayBuffer(44+n*2),v=new DataView(buf),ws=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i))};
+  ws(0,'RIFF');v.setUint32(4,36+n*2,true);ws(8,'WAVE');ws(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
+  v.setUint32(24,sr,true);v.setUint32(28,sr*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);ws(36,'data');v.setUint32(40,n*2,true);
+  new Int16Array(buf,44).set(pcm);return URL.createObjectURL(new Blob([buf],{type:'audio/wav'}))}
+function unlockFiles(){if(filesUnlocked)return;filesUnlocked=true;
+  Object.keys(SOUND).forEach(k=>{try{if(!SFILE[k]){const a=new Audio(makeWav(SOUND[k]));a.preload='auto';SFILE[k]=a}
+    const a=SFILE[k];a.muted=true;const p=a.play();
+    if(p&&p.then)p.then(()=>{a.pause();a.currentTime=0;a.muted=false;SFILE_OK[k]=true}).catch(()=>{a.muted=false;filesUnlocked=false})}catch(e){}})}
+document.addEventListener('touchstart',unlockAudio,{passive:true});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&actx&&actx.state!=='running')try{actx.resume()}catch(e){}});
 document.addEventListener('pointerdown',unlockAudio,{passive:true});
 document.addEventListener('keydown',unlockAudio);
@@ -504,8 +529,14 @@ const SOUND={
   chime:{type:'sine',vol:.14,seq:[[660,.12,.05],[880,.16,0]]}
 };
 function play(name){
+  if(actx&&actx.state!=='running')try{actx.resume()}catch(e){}
+  const a=SFILE[name];
+  if(a&&SFILE_OK[name]){try{a.pause();a.currentTime=0;a.muted=false;const p=a.play();if(p&&p.catch)p.catch(()=>playTone(name));return}catch(e){}}
+  playTone(name);
+}
+function playTone(name){
   if(!actx)return;
-  if(actx.state!=='running'){try{actx.resume().then(()=>{if(actx.state==='running')play(name)}).catch(()=>{})}catch(e){}return}
+  if(actx.state!=='running'){try{actx.resume().then(()=>{if(actx.state==='running')playTone(name)}).catch(()=>{})}catch(e){}return}
   const P=SOUND[name];let t=actx.currentTime+.02;
   P.seq.forEach(([f,d,gap])=>{const o=actx.createOscillator(),g=actx.createGain();o.type=P.type;o.frequency.value=f;
     g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(P.vol,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+d);
